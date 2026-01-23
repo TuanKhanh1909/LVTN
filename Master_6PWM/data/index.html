@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Mars Rover Controller</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+    <div class="topnav">
+        <h1>🚀 Mars Rover Controller</h1>
+    </div>
+    <div class="content">
+        <div class="card" style="margin-bottom: 20px;">
+            <div class="safety-container">
+                <span class="safety-label">🎮 Chế độ Web:</span>
+                <label class="switch">
+                    <input type="checkbox" id="webEnableBtn" onchange="toggleWebControl()">
+                    <span class="slider-toggle round"></span>
+                </label>
+                <span class="safety-text" id="safetyStatus">🔴 TẮT</span>
+            </div>
+        </div>
+        <div class="control-grid">
+            <div class="card">
+                <p class="card-title">🎮 Hướng (Direction)</p>
+                <div class="joystick-container">
+                    <div class="joystick-base">
+                        <div class="axis-line vertical"></div>
+                        <div class="axis-line horizontal"></div>
+                        <div class="center-dot"></div>
+                        <div class="joystick-handle" id="joystick"></div>
+                    </div>
+                </div>
+                <div class="status-grid">
+                    <div class="status-item">
+                        <div class="status-label">X Position</div>
+                        <div class="status-value" id="xValue">2048</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">Y Position</div>
+                        <div class="status-value" id="yValue">2048</div>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <p class="card-title">⚡ Tốc độ (Limit)</p>
+                <div class="speed-container">
+                    <div class="speed-labels"><span>MAX</span></div>
+                    <div class="slider-wrapper">
+                        <input type="range" id="speedSlider" class="speed-slider"
+                               min="0" max="4095" value="0" step="1">
+                    </div>
+                    <div class="speed-labels"><span>MIN</span></div>
+                </div>
+                <div class="status-grid">
+                    <div class="status-item">
+                        <div class="status-label">Speed Limit</div>
+                        <div class="status-value" id="speedValue">0%</div>
+                    </div>
+                    <div class="status-item">
+                        <div class="status-label">POT Value</div>
+                        <div class="status-value" id="potValue">0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="mode-display">
+                <div class="mode-text" id="modeDisplay">🔄 NEUTRAL</div>
+            </div>
+            <div class="connection-status connection-ok" id="connectionStatus">
+                🟢 Connection: Connecting...
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
