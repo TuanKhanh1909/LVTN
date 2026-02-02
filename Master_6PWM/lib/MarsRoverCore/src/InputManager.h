@@ -1,0 +1,50 @@
+#ifndef INPUT_MANAGER_H
+#define INPUT_MANAGER_H
+
+#include <Arduino.h>
+#include "RoverTypes.h"
+
+#define SIGNAL_TIMEOUT_MS 2000 // 2 giây không có tín hiệu -> Tự dừng (Failsafe)
+
+/**
+ * @class InputManager
+ * @brief Bộ đa hợp tín hiệu (Multiplexer). 
+ * Nhận tín hiệu từ Web, RC, ESP-NOW, chuẩn hóa về dạng Pulse và chọn nguồn ưu tiên.
+ */
+class InputManager {
+private:
+    ControlCommand _dataRC;
+    ControlCommand _dataEspNow;
+    ControlCommand _dataWeb;
+
+    unsigned long _lastTimeRC;
+    unsigned long _lastTimeEspNow;
+    unsigned long _lastTimeWeb;
+
+    InputSource _activeSource;
+
+public:
+    InputManager();
+    void begin();
+
+    // 1. Cập nhật từ Web: Nhận X, Y, Pot -> Tính toán Mixing ngay lập tức
+    void updateWeb(int x, int y, int pot);
+    
+    // 2. Cập nhật từ Tay cầm cũ: Đã là dạng Pulse -> Lưu trực tiếp
+    void updateEspNow(uint16_t pL, uint16_t pR);
+    
+    // 3. Cập nhật từ RC: Đã là dạng Pulse -> Lưu trực tiếp (kèm công tắc kích hoạt)
+    void updateRC(uint16_t pL, uint16_t pR, bool isSwitchOn); 
+
+    // Lấy lệnh điều khiển cuối cùng sau khi xét độ ưu tiên
+    ControlCommand getCommand();
+    
+    // Lấy nguồn đang điều khiển (để hiển thị LED báo hiệu)
+    InputSource getActiveSource();
+
+private:
+    bool isSourceValid(unsigned long lastTime);
+    void calculateWebMixing(int x, int y, int pot, uint16_t &outL, uint16_t &outR);
+};
+
+#endif
