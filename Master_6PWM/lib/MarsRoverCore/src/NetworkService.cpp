@@ -28,14 +28,87 @@ void NetworkService::begin() {
 
     // 3. Setup Web Server
     setupWebServer();
+
+    //4.Khởi tạo thời gian
+    _lastClientConnectedTime = millis();
 }
 
 void NetworkService::update() {
-    _ws.cleanupClients();
+    //LOGIC BẢO VỆ CHIP
+    unsigned long now = millis();
+
+    //Chỉ kiểm tra khi WiFi đang BẬT
+    if (_isWiFiOn){
+        _ws.cleanupClients(); //Dọn dẹp client rác
+
+        //Kiểm tra số lượng thiết bị đang kết nối vào WiFi AP
+        //softAPgetStationNum() trả về số lượng điện thoại/laptop đang kết nối
+        bool isWebConnected = (WiFi.softAPgetStationNum() > 0);
+
+        // Kiểm tra xem tay cầm ESP-NOW có đang hoạt động không
+        // Nếu nguồn đang lái là ESP_NOW thì TUYỆT ĐỐI KHÔNG TẮT WIFI
+        bool isEspNowActive = (_inputMgr->getActiveSource() == SOURCE_ESP_NOW);
+
+        //Nếu có BẤT KỲ kết nối nào (Web hoặc Tay cầm), reset bộ đếm timeout
+        if(isWebConnected || isEspNowActive){
+            _lastClientConnectedTime = now; //Có người dùng -> Reset timer
+        }else{
+            //Chỉ tắt khi KHÔNG dùng cả Web lẫn Tay cầm trong 5 giây
+            if(now - _lastClientConnectedTime > WIFI_TIMEOUT){
+                Serial.println("[INFO] No client! Turning OFF WiFi to save ESP32!");
+                disableWiFi();
+            }
+        } 
+    }else{
+        //Nếu WiFi đang TẮT (Chế độ làm mát)
+        //Đợi đủ 10 giây thì bật lại để tìm kết nối
+        if (now - _wifiOffTime > WIFI_COOLDOWN){
+            Serial.println("[INFO] Cooldown finished. Turning ON WiFi...");
+            enableWiFi();
+            _lastClientConnectedTime = now; //Reset timer để không bị tắt ngay lập tức
+        }
+    }    
 }
 
+void NetworkService::disableWiFi(){
+    // Tắt chế độ AP để ngắt bộ phát sóng RF (nguồn nhiệt chính)
+    // Lưu ý: Tắt WiFi có thể ảnh hưởng ESP-NOW nếu dùng chung kênh.
+    // Nhưng an toàn là trên hết. Nếu muốn giữ ESP-NOW, chỉ tắt AP thôi.
+
+    // Cách 1: Tắt hẳn WiFi (An toàn nhất cho nhiệt độ)
+    WiFi.mode(WIFI_OFF);
+
+    // Cách 2: Nếu muốn giữ ESP-NOW (Tay cầm vật lý) thì chỉ tắt AP (nhưng vẫn còn nhiệt)
+    // WiFi.softAPdisconnect(true);
+    // WiFi.mode(WIFI_STA);
+
+    _isWiFiOn = false;
+    _wifiOffTime = millis();
+
+    // [CỰC KỲ QUAN TRỌNG] Báo cho InputManager biết là mất kết nối Web rồi
+    // Để nó tự động phanh xe lại ngay lập tức
+    // Cần thêm hàm resetWebInput() vào InputManager nếu chưa có
+    //instance->_inputMgr->resetWebInput();
+}
+
+void NetworkService::enableWiFi(){
+    // Bật lại WiFi AP + STA
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP(_ssid, _password);
+    
+    // Cần khởi tạo lại ESP-NOW nếu lúc nãy đã tắt hoàn toàn
+    if (esp_now_init() != ESP_OK) {
+        Serial.println("[ERR] ESP-NOW Restart Failed");
+    } else {
+        esp_now_register_recv_cb(NetworkService::onEspNowRecv);
+    }
+    
+    _isWiFiOn = true;
+}
 void NetworkService::broadcastStatus(String status) {
-    _ws.textAll(status);
+    if(_isWiFiOn && WiFi.softAPgetStationNum() > 0){
+        _ws.textAll(status);
+    }
 }
 
 // --- PRIVATE SETUP ---
@@ -43,6 +116,8 @@ void NetworkService::broadcastStatus(String status) {
 void NetworkService::setupWiFi() {
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP(_ssid, _password);
+    // Giảm công suất phát sóng xuống một chút để đỡ nóng (Mặc định là 19.5dBm)
+    WiFi.setTxPower(WIFI_POWER_11dBm);
     Serial.print("[INFO] AP IP: ");
     Serial.println(WiFi.softAPIP());
 }

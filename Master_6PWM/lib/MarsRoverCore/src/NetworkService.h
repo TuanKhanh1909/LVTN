@@ -18,6 +18,13 @@ private:
     const char* _ssid;
     const char* _password;
 
+    //BIẾN QUẢN LÝ TRẠNG THÁI WIFI
+    bool _isWiFiOn; //Trạng thái WiFi hiện tại
+    unsigned long _lastClientConnectedTime; //Lần cuối cùng có người kết nối
+    const unsigned long WIFI_TIMEOUT = 5000; //5 giây không có kết nối -> Tắt WiFi
+    const unsigned long WIFI_COOLDOWN = 10000;  //Tắt 10 giây cho giải nhiệt rồi bật lại
+    unsigned long _wifiOffTime; //Thời điểm tắt WiFi
+
 public:
     // Constructor nhận vào InputManager để sau này callback gọi được nó
     NetworkService(InputManager* inputMgr);
@@ -35,6 +42,9 @@ private:
     void setupWiFi();
     void setupEspNow();
     void setupWebServer();
+
+    void disableWiFi();
+    void enableWiFi();
 
     // Hàm xử lý sự kiện WebSocket (Static để dùng làm callback)
     static void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, 

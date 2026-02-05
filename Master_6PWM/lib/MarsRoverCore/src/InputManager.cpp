@@ -89,7 +89,7 @@ void InputManager::updateRC(uint16_t pL, uint16_t pR, bool isSwitchOn) {
 }
 
 bool InputManager::isSourceValid(unsigned long lastTime) {
-    // Kiểm tra xem tín hiệu có còn mới không (trong vòng 2 giây)
+    // Kiểm tra xem tín hiệu có còn mới không (trong vòng 200 miligiây)
     return (millis() - lastTime < SIGNAL_TIMEOUT_MS);
 }
 

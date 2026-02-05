@@ -149,8 +149,16 @@ void setup() {
     sideLeft.addMotor(&m_L1); sideLeft.addMotor(&m_L2); sideLeft.addMotor(&m_L3);
     sideRight.addMotor(&m_R1); sideRight.addMotor(&m_R2); sideRight.addMotor(&m_R3);
     
-    myRover.setSides(&sideLeft, &sideRight);
+    //Cài đặt Trim
+    m_L1.setTrim(1.0);
+    m_L2.setTrim(0.9);
+    m_L3.setTrim(1.0);
+    m_R1.setTrim(1.0);
+    m_R2.setTrim(0.92);
+    m_R3.setTrim(1.0);
     
+    myRover.setSides(&sideLeft, &sideRight);
+
     // 3. Khởi động các Dịch vụ
     inputMgr.begin(); // Khởi động bộ quản lý đầu vào
     myRover.begin();  // Khởi động các chân PWM/Dir

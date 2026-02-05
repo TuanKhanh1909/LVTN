@@ -80,9 +80,35 @@ void Rover::update(ControlCommand cmd, float currentRPM) {
             }
             break;
     }
+    // --- [DEBUG CODE] IN GIÁ TRỊ RA MÀN HÌNH (Thêm đoạn này) ---
+    static unsigned long lastDebugTime = 0;
+    if (millis() - lastDebugTime > 200) { // In mỗi 200ms
+        lastDebugTime = millis();
+        
+        Serial.print("IN Pulse[L:");
+        Serial.print(cmd.pulseL);
+        Serial.print("|R:");
+        Serial.print(cmd.pulseR);
+        Serial.print("] -> Target[L:");
+        Serial.print(targetSpeedL);
+        Serial.print("|R:");
+        Serial.print(targetSpeedR);
+        Serial.print("] -> PWM_Out[L:");
+        Serial.print((int)_currentSpeedL);
+        Serial.print("|R:");
+        Serial.print((int)_currentSpeedR);
+        Serial.print("] -> State:");
+        
+        if (_currentState == STATE_IDLE) Serial.println("IDLE");
+        else if (_currentState == STATE_DRIVING) Serial.println("DRIVING");
+        else Serial.println("BRAKING");
+    }
+    // -----------------------------------------------------------
 }
 
-// Hàm xác định trạng thái hiển thị (10 trạng thái như em yêu cầu)
+
+
+// Hàm xác định trạng thái hiển thị (10 trạng thái như yêu cầu)
 MotionType Rover::getMotionType() {
     if (_currentState != STATE_DRIVING || (_currentSpeedL == 0 && _currentSpeedR == 0)) 
         return MOTION_STOP;

@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include "RoverTypes.h"
 
-#define SIGNAL_TIMEOUT_MS 2000 // 2 giây không có tín hiệu -> Tự dừng (Failsafe)
+#define SIGNAL_TIMEOUT_MS 200 // 200 miligiây không có tín hiệu -> Tự dừng (Failsafe)
 
 /**
  * @class InputManager
