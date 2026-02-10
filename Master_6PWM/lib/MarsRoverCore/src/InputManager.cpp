@@ -76,16 +76,43 @@ void InputManager::updateEspNow(uint16_t pL, uint16_t pR) {
     _dataEspNow.connected = true;
     _lastTimeEspNow = millis();
 }
+//Hàm trộn cho kênh RC
+void InputManager::calculateRCMixing(uint16_t Throttle, uint16_t Steering, uint16_t &outL, uint16_t &outR){
+    // throttle: 1000(Lùi) - 1500(Dừng) - 2000(Tiến)
+    // steering: 1000(Trái) - 1500(Thẳng) - 2000(Phải)
+    
+    //1. Chuyển về tọa độ (-500, 500)
+    long y = (long)Throttle - 1500;
+    long x = (long)Steering - 1500;
 
-void InputManager::updateRC(uint16_t pL, uint16_t pR, bool isSwitchOn) {
-    if (isSwitchOn) {
-        _dataRC.pulseL = pL;
-        _dataRC.pulseR = pR;
-        _dataRC.connected = true;
-        _lastTimeRC = millis();
-    } else {
-        _dataRC.connected = false;
-    }
+    //Deadzone (Vùng chết) để chống rung tay
+    if (abs(y) < 30)
+        y = 0;
+    if (abs(x) < 30)
+        x = 0;
+
+    // 2. Thuật toán trộn đơn giản (Arcade)
+    // Bánh Trái = Ga + Lái
+    // Bánh Phải = Ga - Lái
+    long left = y + x;
+    long right = y - x;
+
+    // 3. Đưa về dải 1000-2000
+    outL = constrain(left + 1500, 1000, 2000);
+    outR = constrain(right + 1500, 1000, 2000);
+}
+void InputManager::updateRC(uint16_t Throttle, uint16_t Steering) {
+    // Lọc nhiễu cơ bản
+    if (Throttle < 800 || Throttle > 2200) return;
+    if (Steering < 800 || Steering > 2200) return;
+
+    uint16_t pL, pR;
+    calculateRCMixing(Throttle,Steering, pL, pR);
+    
+    _dataRC.pulseL = pL;
+    _dataRC.pulseR = pR;
+    _dataRC.connected = true; // Đánh dấu là có kết nối RC
+    _lastTimeRC = millis();
 }
 
 bool InputManager::isSourceValid(unsigned long lastTime) {

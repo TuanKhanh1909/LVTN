@@ -7,5 +7,6 @@
 #include "Rover.h"
 #include "InputManager.h"
 #include "NetworkService.h"
+#include "RcService.h"
 
 #endif

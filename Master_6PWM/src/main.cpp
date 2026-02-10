@@ -60,6 +60,9 @@ InputManager inputMgr;  // Bộ quản lý đầu vào: Web, RC, ESP-NOW
 // Truyền địa chỉ inputMgr vào để NetworkService có thể cập nhật lệnh điều khiển
 NetworkService network(&inputMgr); 
 
+//Tay cầm RC
+RcService rcService(&inputMgr, 22, 21); //RC Throttle Pin 22, Steering Pin 21
+
 /* --- BIẾN TOÀN CỤC CHO TASK --- */
 QueueHandle_t displayQueue; // Hàng đợi gửi dữ liệu hiển thị (Core 1 -> Core 0)
 
@@ -67,6 +70,7 @@ QueueHandle_t displayQueue; // Hàng đợi gửi dữ liệu hiển thị (Core
 // Dùng kiểu uint32_t và int64_t để khớp với hàm getRPM
 uint32_t prev_L1_cnt = 0;
 int64_t prev_L1_time = 0;
+
 
 // =========================================================================================
 // 3. ĐỊNH NGHĨA CÁC TÁC VỤ (TASKS)
@@ -84,6 +88,7 @@ void TaskControl(void *pvParameters) {
 
     for (;;) {
         // 1. Lấy lệnh điều khiển chuẩn hóa (Pulse 1000-2000)
+        rcService.update();
         // InputManager tự động chọn nguồn ưu tiên (RC > ESP-NOW > Web)
         ControlCommand cmd = inputMgr.getCommand();
 
@@ -163,7 +168,7 @@ void setup() {
     inputMgr.begin(); // Khởi động bộ quản lý đầu vào
     myRover.begin();  // Khởi động các chân PWM/Dir
     network.begin();  // Khởi động WiFi, WebServer, ESP-NOW
-
+    rcService.begin(); //Khởi động cho RC
     // 4. Khởi tạo RTOS
     displayQueue = xQueueCreate(1, sizeof(MotionType)); // Hàng đợi độ dài 1
 

@@ -33,8 +33,8 @@ public:
     // 2. Cập nhật từ Tay cầm cũ: Đã là dạng Pulse -> Lưu trực tiếp
     void updateEspNow(uint16_t pL, uint16_t pR);
     
-    // 3. Cập nhật từ RC: Đã là dạng Pulse -> Lưu trực tiếp (kèm công tắc kích hoạt)
-    void updateRC(uint16_t pL, uint16_t pR, bool isSwitchOn); 
+    // 3. Cập nhật từ RC: Tín hiệu PWM từ tay cầm RC -> Tính toán mixing
+    void updateRC(uint16_t Throttle, uint16_t Steering); 
 
     // Lấy lệnh điều khiển cuối cùng sau khi xét độ ưu tiên
     ControlCommand getCommand();
@@ -45,6 +45,7 @@ public:
 private:
     bool isSourceValid(unsigned long lastTime);
     void calculateWebMixing(int x, int y, int pot, uint16_t &outL, uint16_t &outR);
+    void calculateRCMixing(uint16_t Throttle, uint16_t Steering, uint16_t &outL, uint16_t &outR);
 };
 
 #endif
