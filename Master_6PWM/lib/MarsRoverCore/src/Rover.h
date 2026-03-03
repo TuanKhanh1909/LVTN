@@ -3,7 +3,7 @@
 
 #include "RoverSide.h"
 #include "RoverTypes.h"
-
+#include "SpeedMonitor.h"
 /**
  * @class Rover
  * @brief Bộ não trung tâm.
@@ -28,7 +28,7 @@ public:
     void begin();
 
     // Hàm cập nhật chính (gọi mỗi 10-20ms)
-    void update(ControlCommand cmd, float currentRPM);
+    void update(ControlCommand cmd);
 
     // Lấy trạng thái để hiển thị (VD: Đang quay trái, đang lùi...)
     MotionType getMotionType();

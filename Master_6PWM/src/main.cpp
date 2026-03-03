@@ -4,13 +4,15 @@
  * @author Nguyen Pham Tuan Khanh
  * @details
  * - Hệ điều hành: FreeRTOS (Dual-Core).
- * - Core 1: Chạy Task Control (Điều khiển động cơ, đọc cảm biến, FSM).
- * - Core 0: Chạy Task Network (WiFi, ESP-NOW, WebServer).
+ * - Core 1: Xử lý Động lực học & Cơ khí (Task 1: InputMixer, Task 2: DriveFSM).
+ * - Core 0: Xử lý Mạng & Sự kiện (Task 3: NetworkCore, Task 4: Telemetry).
  */
-
+// =========================================================================================
+// 1. CÁC THƯ VIỆN (LIBRARY INSTANTIATION)
+// =========================================================================================
 #include <Arduino.h>
 #include <MarsRoverCore.h> // Thư viện lõi tự viết (Chứa logic Rover, Driver, Network...)
-#include "RPM_Meter.h"     // Thư viện đo tốc độ Hall Sensor
+#include "SpeedMonitor.h"
 
 // --- CÁC THƯ VIỆN MẠNG ---
 #include <WiFi.h>
@@ -18,13 +20,6 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <SPIFFS.h>
-
-// =========================================================================================
-// 1. KHẮC PHỤC LỖI LINKER (QUAN TRỌNG)
-// =========================================================================================
-// [FIX] Đây là nơi tạo biến timerMux thực sự trong bộ nhớ.
-// Biến này dùng để khóa ngắt (Critical Section) khi đọc cảm biến Hall, tránh xung đột dữ liệu.
-portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 // =========================================================================================
 // 2. KHỞI TẠO CÁC ĐỐI TƯỢNG (OBJECT INSTANTIATION)
@@ -42,7 +37,7 @@ BldcDriver m_L3(5, 2);  // Động cơ L3: Pin 5,  Kênh PWM 2
 
 // Side Trái: Dir Pin 17, Brake Pin 23.
 // reverseLogic = true: Nếu mạch của em dùng Transistor đảo mức (High = Lùi).
-RoverSide sideLeft(17, 23, true); 
+RoverSide sideLeft(17, 23, true);
 
 // --- CỤM BÊN PHẢI (RIGHT SIDE) ---
 BldcDriver m_R1(4, 3);  // Động cơ R1: Pin 4,  Kênh PWM 3
@@ -53,89 +48,115 @@ BldcDriver m_R3(14, 5); // Động cơ R3: Pin 14, Kênh PWM 5
 RoverSide sideRight(18, 19, false);
 
 /* --- ĐỐI TƯỢNG LOGIC HỆ THỐNG --- */
-Rover myRover;          // Bộ não trung tâm: Xử lý Mixing, FSM
-InputManager inputMgr;  // Bộ quản lý đầu vào: Web, RC, ESP-NOW
+Rover myRover;         // Bộ não trung tâm: Xử lý Mixing, FSM
+InputManager inputMgr; // Bộ quản lý đầu vào: Web, RC, ESP-NOW
 
 /* --- ĐỐI TƯỢNG DỊCH VỤ MẠNG --- */
 // Truyền địa chỉ inputMgr vào để NetworkService có thể cập nhật lệnh điều khiển
-NetworkService network(&inputMgr); 
+NetworkService network(&inputMgr);
 
-//Tay cầm RC
-RcService rcService(&inputMgr, 22, 21); //RC Throttle Pin 22, Steering Pin 21
+// Tay cầm RC
+RcService rcService(&inputMgr, 22, 21); // RC Throttle Pin 22, Steering Pin 21
 
-/* --- BIẾN TOÀN CỤC CHO TASK --- */
-QueueHandle_t displayQueue; // Hàng đợi gửi dữ liệu hiển thị (Core 1 -> Core 0)
-
-// Biến lưu trạng thái đo RPM (cho bánh L1 đại diện)
-// Dùng kiểu uint32_t và int64_t để khớp với hàm getRPM
-uint32_t prev_L1_cnt = 0;
-int64_t prev_L1_time = 0;
-
+// =========================================================================================
+//  KHAI BÁO HÀNG ĐỢI (QUEUES - CẦU NỐI IPC GIỮA CÁC TASK)
+// =========================================================================================
+QueueHandle_t queue_Cmd;       // Truyền lệnh từ Task 1 -> Task 2
+QueueHandle_t queue_Telemetry; // Truyền trạng thái từ Task 2 -> Task 4
 
 // =========================================================================================
 // 3. ĐỊNH NGHĨA CÁC TÁC VỤ (TASKS)
 // =========================================================================================
 
 /**
- * @brief TASK 1: ĐIỀU KHIỂN THỜI GIAN THỰC
- * @core 1 (App Core)
- * @period 20ms (50Hz)
+ * @brief TASK 1: NGƯỜI GOM LỆNH (Input Mixer)
+ *@core 1 | Priority 3 | Chu kỳ: 20ms (50Hz)
  * @details Chịu trách nhiệm lái xe, đảm bảo an toàn và phản hồi nhanh.
  */
-void TaskControl(void *pvParameters) {
+void Task_InputMixer(void *pvParameters)
+{
     TickType_t xLastWakeTime = xTaskGetTickCount();
     const TickType_t xFrequency = pdMS_TO_TICKS(20); // Chu kỳ 20ms
 
-    for (;;) {
-        // 1. Lấy lệnh điều khiển chuẩn hóa (Pulse 1000-2000)
+    for (;;)
+    {
+        // 1. Cập nhật dữ liệu phần cứng (RC)
         rcService.update();
-        // InputManager tự động chọn nguồn ưu tiên (RC > ESP-NOW > Web)
-        ControlCommand cmd = inputMgr.getCommand();
 
-        // 2. Đọc tốc độ thực tế (Feedback)
-        // Hàm getRPM sẽ tự cập nhật prev_L1_cnt và prev_L1_time
-        float rpmL = getRPM(0, prev_L1_cnt, prev_L1_time); 
-        
-        // 3. Thực thi logic điều khiển xe
-        // Truyền lệnh và RPM thực tế vào Rover để xử lý máy trạng thái (FSM)
-        myRover.update(cmd, abs(rpmL));
+        // 2. Lấy lệnh ưu tiên cao nhất đã được trộn sẵn (Mixer & Failsafe)
+        ControlCommand readyCmd = inputMgr.getCommand();
 
-        // 4. Gửi trạng thái hiển thị sang Task Network
-        // Dùng Queue để tránh xung đột vùng nhớ giữa 2 Core
-        MotionType status = myRover.getMotionType();
-        xQueueOverwrite(displayQueue, &status);
+        // 3. Đẩy lệnh cho cơ khí (Ghi đè - Luôn giữ lệnh mới nhất)
+        xQueueOverwrite(queue_Cmd, &readyCmd);
 
-        // 5. Ngủ chính xác để đảm bảo chu kỳ 20ms
+        // 4. Ngủ tuyệt đối chuẩn 20ms
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
 /**
- * @brief TASK 2: GIAO TIẾP MẠNG
- * @core 0 (Pro Core)
- * @details Xử lý WiFi, WebServer và gửi phản hồi trạng thái.
+ * @brief TASK 2: TRÁI TIM CƠ KHÍ (Drive FSM)
+ * @core 1 | Priority 4 (Cao nhất) | Hướng sự kiện (Event-driven)
+ * @details Xử lý chính.
  */
-void TaskNetwork(void *pvParameters) {
-    MotionType currentStatus = MOTION_STOP;
-    unsigned long lastBroadcast = 0;
+void Task_DriveFSM(void *pvParameters)
+{
+    ControlCommand received_cmd;
+    MotionType oldMotion = MOTION_STOP;
 
-    for (;;) {
-        // 1. Duy trì hoạt động mạng (Dọn dẹp client, xử lý gói tin đến)
-        // Hàm này nằm trong thư viện NetworkService.cpp
+    for (;;)
+    {
+        // 1. Ngủ sâu chờ lệnh (Chỉ thức dậy khi Task 1 đẩy lệnh vào)
+        if (xQueueReceive(queue_Cmd, &received_cmd, portMAX_DELAY) == pdPASS)
+        {
+
+            // 2. Giao phó sinh mạng cơ khí cho Tướng quân Rover xử lý (FSM, Deadband, Soft-start)
+            myRover.update(received_cmd);
+
+            // 3. Kiểm tra biến động để báo cáo (Bộ lọc sự kiện)
+            MotionType newMotion = myRover.getMotionType();
+            if (newMotion != oldMotion)
+            {
+                // Chỉ gửi báo cáo khi xe THỰC SỰ chuyển hướng
+                xQueueSend(queue_Telemetry, &newMotion, 0);
+                oldMotion = newMotion;
+            }
+        }
+    }
+}
+
+/**
+ * @brief TASK 3: BẢO VỆ MẠNG & HỆ THỐNG (Network Core)
+ * @core 0 | Priority 1 (Thấp nhất) | Chu kỳ: 10ms
+ */
+void Task_NetworkCore(void *pvParameters)
+{
+    for (;;)
+    {
+        // 1. Duy trì WiFi, dọn dẹp WebSockets và Bảo vệ Nhiệt độ chip
         network.update();
 
-        // 2. Gửi phản hồi về Web mỗi 100ms (10Hz)
-        if (millis() - lastBroadcast > 100) {
-            // Kiểm tra xem có trạng thái mới từ Task Control không
-            if (xQueueReceive(displayQueue, &currentStatus, 0) == pdPASS) {
-                // Gửi chuỗi JSON hoặc Text về Web
-                network.broadcastStatus("STATUS:" + String(currentStatus));
-            }
-            lastBroadcast = millis();
-        }
-
-        // Nhường CPU 10ms để tránh Watchdog Reset
+        // 2. Nhường CPU 10ms để dỗ Watchdog Timer của lõi 0
         vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+/**
+ * @brief TASK 4: PHÓNG VIÊN BÁO CÁO (Telemetry)
+ * @core 0 | Priority 2 | Hướng sự kiện (Event-driven)
+ */
+void Task_Telemetry(void *pvParameters)
+{
+    MotionType status;
+
+    for (;;)
+    {
+        // 1. Ngủ sâu chờ có tin tức biến động từ Task 2
+        if (xQueueReceive(queue_Telemetry, &status, portMAX_DELAY) == pdPASS)
+        {
+            // 2. Bắn gói tin cập nhật Digital Twin lên giao diện Web
+            network.broadcastStatus("STATUS:" + String(status));
+        }
     }
 }
 
@@ -143,45 +164,53 @@ void TaskNetwork(void *pvParameters) {
 // 4. KHỞI TẠO (SETUP)
 // =========================================================================================
 
-void setup() {
+void setup()
+{
     Serial.begin(115200);
     Serial.println("--- MARS ROVER INITIALIZING ---");
 
-    // 1. Khởi tạo Phần cứng & Cảm biến
-    setupRPM(); // Khởi tạo ngắt Hall Sensor
-    
-    // 2. Lắp ráp các thành phần (Dependency Injection)
-    sideLeft.addMotor(&m_L1); sideLeft.addMotor(&m_L2); sideLeft.addMotor(&m_L3);
-    sideRight.addMotor(&m_R1); sideRight.addMotor(&m_R2); sideRight.addMotor(&m_R3);
-    
-    //Cài đặt Trim
+    // 1. Lắp ráp các thành phần (Dependency Injection)
+    sideLeft.addMotor(&m_L1);
+    sideLeft.addMotor(&m_L2);
+    sideLeft.addMotor(&m_L3);
+    sideRight.addMotor(&m_R1);
+    sideRight.addMotor(&m_R2);
+    sideRight.addMotor(&m_R3);
+
+    // Cài đặt Trim
     m_L1.setTrim(1.0);
     m_L2.setTrim(0.9);
     m_L3.setTrim(1.0);
     m_R1.setTrim(1.0);
     m_R2.setTrim(0.92);
     m_R3.setTrim(1.0);
-    
+
     myRover.setSides(&sideLeft, &sideRight);
 
-    // 3. Khởi động các Dịch vụ
-    inputMgr.begin(); // Khởi động bộ quản lý đầu vào
-    myRover.begin();  // Khởi động các chân PWM/Dir
-    network.begin();  // Khởi động WiFi, WebServer, ESP-NOW
-    rcService.begin(); //Khởi động cho RC
-    // 4. Khởi tạo RTOS
-    displayQueue = xQueueCreate(1, sizeof(MotionType)); // Hàng đợi độ dài 1
+    // 2. Khởi động các Dịch vụ
+    setupSpeedMonitor(); // Bật ngắt Cảm biến Hall
+    inputMgr.begin();    // Khởi động bộ quản lý đầu vào
+    myRover.begin();     // Khởi động các chân PWM/Dir
+    network.begin();     // Khởi động WiFi, WebServer, ESP-NOW
+    rcService.begin();   // Khởi động cho RC
+    // 3. Khởi tạo RTOS
+    // Hàng đợi chỉ cần độ dài 1 (Zero-latency design)
+    queue_Cmd = xQueueCreate(1, sizeof(ControlCommand));
+    queue_Telemetry = xQueueCreate(1, sizeof(MotionType));
 
-    // Tạo Task chạy trên Core 1 (Ưu tiên lái xe)
-    xTaskCreatePinnedToCore(TaskControl, "Control", 8192, NULL, 2, NULL, 1);
-    
-    // Tạo Task chạy trên Core 0 (Ưu tiên mạng)
-    xTaskCreatePinnedToCore(TaskNetwork, "Network", 8192, NULL, 1, NULL, 0);
+    // CHẠY TRÊN CORE 1 (CƠ KHÍ)
+    xTaskCreatePinnedToCore(Task_InputMixer, "InputMixer", 4096, NULL, 3, NULL, 1);
+    xTaskCreatePinnedToCore(Task_DriveFSM, "DriveFSM", 4096, NULL, 4, NULL, 1);
+
+    // CHẠY TRÊN CORE 0 (MẠNG)
+    xTaskCreatePinnedToCore(Task_NetworkCore, "Network", 8192, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(Task_Telemetry, "Telemetry", 4096, NULL, 2, NULL, 0);
 
     Serial.println("--- SYSTEM READY ---");
 }
 
-void loop() {
+void loop()
+{
     // Xóa task loop mặc định để tiết kiệm tài nguyên
-    vTaskDelete(NULL); 
+    vTaskDelete(NULL);
 }

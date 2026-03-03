@@ -62,48 +62,47 @@ function onMessage(event) {
     // Chỉ cập nhật giao diện (Digital Twin) khi KHÔNG KÉO TAY
     if (isDragging) return;
 
-    // Parse: "X:2048,Y:2048,POT:0,EN:0"
+    // Parse: "STATUS:1"
     let msg = event.data;
-    if (msg.startsWith("X:")) {
-        let parts = msg.split(',');
+    if (msg.startsWith("STATUS:")) {
+        // Cắt lấy con số phía sau chữ "STATUS:" (Ví dụ "STATUS:1" -> lấy số 1)
+        let statusCode = parseInt(msg.substring(7));
+        let modeText = "⏸️ STOP";
         
-        // 1. Lấy giá trị
-        let sX = parseInt(parts[0].split(':')[1]);
-        let sY = parseInt(parts[1].split(':')[1]);
-        let sPot = parseInt(parts[2].split(':')[1]);
+        // Map các số nguyên (Enum MotionType) thành Text để hiển thị
+        switch(statusCode) {
+            case 0: modeText = "⏸️ STOP"; break;
+            case 1: modeText = "⬆️ FORWARD"; break;
+            case 2: modeText = "⬇️ BACKWARD"; break;
+            case 3: modeText = "↖️ FWD LEFT"; break;
+            case 4: modeText = "↗️ FWD RIGHT"; break;
+            case 5: modeText = "↙️ BCK LEFT"; break;
+            case 6: modeText = "↘️ BCK RIGHT"; break;
+            case 7: modeText = "🔄 SPIN LEFT"; break;
+            case 8: modeText = "🔄 SPIN RIGHT"; break;
+        }
         
-        // 2. Đồng bộ trạng thái nút Bấm (nếu có gửi kèm)
-        // (Tùy chọn: Nếu muốn web khác cũng thấy nút nhảy theo)
-        
-        // 3. Cập nhật hiển thị
-        updateVisuals(sX, sY, sPot);
+        // Cập nhật trạng thái THỰC TẾ của xe lên màn hình
+        document.getElementById('modeDisplay').textContent = modeText;
+        return; // Đã xử lý xong gói STATUS thì thoát hàm
     }
 }
 
 function updateVisuals(x, y, pot) {
+    // 1. Cập nhật các con số Text
     document.getElementById('xValue').textContent = x;
     document.getElementById('yValue').textContent = y;
     document.getElementById('potValue').textContent = pot;
-    
-    let percent = Math.round((pot / 4095) * 100);
-    document.getElementById('speedValue').textContent = percent + "%";
+    document.getElementById('speedValue').textContent = Math.round((pot / 4095) * 100) + "%";
 
-    // Di chuyển Joystick
+    // 2. Dịch chuyển Joystick
     let deltaX = ((x - 2048) / 2047) * maxDistance;
     let deltaY = ((y - 2048) / 2047) * maxDistance;
     joystick.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
     
-    // Cập nhật thanh trượt
+    // 3. Cập nhật vị trí thanh trượt
     speedSlider.value = pot;
-
-    // Cập nhật Mode text
-    let mode = "⏸️ NEUTRAL";
-    if (y < 1600) mode = "⬆️ FORWARD";
-    else if (y > 2500) mode = "⬇️ BACKWARD";
-    if (x < 1600) mode += " ⬅️ LEFT";
-    else if (x > 2500) mode += " ➡️ RIGHT";
-    document.getElementById('modeDisplay').textContent = mode;
-}
+ }
 // --- LOGIC JOYSTICK ẢO ---
 function initJoystick() {
     joystick.addEventListener('mousedown', startDrag);
@@ -138,7 +137,7 @@ function drag(e) {
         deltaY = Math.sin(angle) * maxDistance;
     }
     
-    joystick.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
+    //joystick.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
     
     // Map từ pixel sang giá trị 0-4095
     // Y đi lên là âm trong HTML, nhưng ta muốn Y<2048 là Tiến (giống tay cầm)
@@ -150,9 +149,10 @@ function drag(e) {
 
 function stopDrag() {
     isDragging = false;
-    joystick.style.transform = 'translate(-50%, -50%)';
+   // joystick.style.transform = 'translate(-50%, -50%)';
     currentX = 2048; // Về giữa
     currentY = 2048; // Về giữa
+    updateVisuals(currentX, centerY, currentPot);
 }
 
 // --- LOGIC SLIDER TỐC ĐỘ ---

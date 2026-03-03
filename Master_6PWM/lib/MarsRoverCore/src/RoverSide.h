@@ -19,7 +19,7 @@ private:
     
     bool _reverseLogic; // Cấu hình: True nếu mạch yêu cầu mức HIGH để lùi
 
-public:
+public: 
     RoverSide(uint8_t dirPin, uint8_t brakePin, bool reverseLogic = true);
     
     void addMotor(BldcDriver* motor);

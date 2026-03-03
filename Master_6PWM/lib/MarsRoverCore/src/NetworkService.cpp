@@ -109,7 +109,7 @@ void NetworkService::broadcastStatus(String status) {
     if(_isWiFiOn && WiFi.softAPgetStationNum() > 0){
         _ws.textAll(status);
     }
-}
+}   
 
 // --- PRIVATE SETUP ---
 

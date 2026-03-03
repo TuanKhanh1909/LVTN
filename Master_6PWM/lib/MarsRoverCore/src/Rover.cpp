@@ -26,7 +26,7 @@ int Rover::pulseToSpeed(uint16_t pulse) {
     return 0; // Điểm chết (Dừng)
 }
 
-void Rover::update(ControlCommand cmd, float currentRPM) {
+void Rover::update(ControlCommand cmd) {
     // 1. Chuyển đổi lệnh
     int targetSpeedL = pulseToSpeed(cmd.pulseL);
     int targetSpeedR = pulseToSpeed(cmd.pulseR);
@@ -73,7 +73,7 @@ void Rover::update(ControlCommand cmd, float currentRPM) {
         case STATE_BRAKING_TO_SWITCH:
             _leftSide->brake(); _rightSide->brake();
             // Điều kiện thoát: Hết thời gian chờ HOẶC Xe đã dừng hẳn (RPM thấp)
-            if (millis() - _brakeStartTime > BRAKE_TIME_MS || currentRPM < 5.0) {
+            if (millis() - _brakeStartTime > BRAKE_TIME_MS || isRoverCompletelyStopped()) {
                 _isTargetForward = desireForward; // Chấp nhận hướng mới
                 _currentSpeedL = 0; _currentSpeedR = 0;
                 _currentState = STATE_DRIVING;
