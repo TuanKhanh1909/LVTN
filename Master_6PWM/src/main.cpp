@@ -96,32 +96,34 @@ void Task_InputMixer(void *pvParameters)
 
 /**
  * @brief TASK 2: TRÁI TIM CƠ KHÍ (Drive FSM)
- * @core 1 | Priority 4 (Cao nhất) | Hướng sự kiện (Event-driven)
+ * @core 1 | Priority 4 (Cao nhất) | Chu kỳ: 20ms (50Hz)
  * @details Xử lý chính.
  */
 void Task_DriveFSM(void *pvParameters)
 {
-    ControlCommand received_cmd;
-    MotionType oldMotion = MOTION_STOP;
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(20);
+
+    // Lệnh lưu trữ nội bộ của Task 2
+    ControlCommand currentCmd;
+    currentCmd.pulseL = 1500; currentCmd.pulseR = 1500; currentCmd.connected = false;
 
     for (;;)
     {
-        // 1. Ngủ sâu chờ lệnh (Chỉ thức dậy khi Task 1 đẩy lệnh vào)
-        if (xQueueReceive(queue_Cmd, &received_cmd, portMAX_DELAY) == pdPASS)
-        {
-
-            // 2. Giao phó sinh mạng cơ khí cho Tướng quân Rover xử lý (FSM, Deadband, Soft-start)
-            myRover.update(received_cmd);
-
-            // 3. Kiểm tra biến động để báo cáo (Bộ lọc sự kiện)
-            MotionType newMotion = myRover.getMotionType();
-            if (newMotion != oldMotion)
-            {
-                // Chỉ gửi báo cáo khi xe THỰC SỰ chuyển hướng
-                xQueueSend(queue_Telemetry, &newMotion, 0);
-                oldMotion = newMotion;
-            }
+        // 1. MỞ HỘP THƯ (Timeout = 0: Không có thư thì thôi, KHÔNG chờ đợi!)
+        if (xQueueReceive(queue_Cmd, &currentCmd, 0) == pdPASS) {
+            // Lấy được thư mới, currentCmd đã được cập nhật
         }
+
+        // 2. CHẠY CƠ KHÍ (Dù mạng lag không có thư mới, nó vẫn lấy thư cũ ra chạy để tính Soft-start)
+        myRover.update(currentCmd);
+
+        // 3. CẬP NHẬT TRẠNG THÁI CHO TASK 4
+        MotionType currentMotion = myRover.getMotionType();
+        xQueueOverwrite(queue_Telemetry, &currentMotion);
+
+        // 4. NGỦ CHUẨN XÁC 20ms
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
@@ -147,16 +149,25 @@ void Task_NetworkCore(void *pvParameters)
  */
 void Task_Telemetry(void *pvParameters)
 {
-    MotionType status;
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(50); // 20Hz (Đủ mượt cho màn hình)
+    
+    MotionType status = MOTION_STOP;
+    MotionType oldStatus = MOTION_STOP; // Trí nhớ để không gửi trùng lặp
 
-    for (;;)
-    {
-        // 1. Ngủ sâu chờ có tin tức biến động từ Task 2
-        if (xQueueReceive(queue_Telemetry, &status, portMAX_DELAY) == pdPASS)
-        {
-            // 2. Bắn gói tin cập nhật Digital Twin lên giao diện Web
-            network.broadcastStatus("STATUS:" + String(status));
+    for (;;) {
+        // 1. Nhìn vào hộp thư trạng thái (Chỉ nhìn - Peek, không lấy mất của hệ thống)
+        if (xQueuePeek(queue_Telemetry, &status, 0) == pdPASS) {
+            
+            // 2. Nếu trạng thái thay đổi thì mới gửi sóng ra ngoài
+            if (status != oldStatus) {
+                network.broadcastStatus("STATUS:" + String(status));
+                oldStatus = status;
+            }
         }
+        
+        // 3. Ngủ 50ms
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
