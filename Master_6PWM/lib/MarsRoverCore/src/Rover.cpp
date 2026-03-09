@@ -27,6 +27,14 @@ int Rover::pulseToSpeed(uint16_t pulse) {
 }
 
 void Rover::update(ControlCommand cmd) {
+    if (!cmd.connected){
+        _currentState = STATE_IDLE;
+        _leftSide->brake();
+        _rightSide->brake();
+        _currentSpeedL = 0;
+        _currentSpeedR = 0;
+        return; //Ngắt điện ngay lập tức
+    }
     // 1. Chuyển đổi lệnh
     int targetSpeedL = pulseToSpeed(cmd.pulseL);
     int targetSpeedR = pulseToSpeed(cmd.pulseR);

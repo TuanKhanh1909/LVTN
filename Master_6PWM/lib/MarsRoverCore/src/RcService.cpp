@@ -2,9 +2,9 @@
 
 // Khởi tạo các biến tĩnh
 volatile unsigned long RcService::_startThr = 0;
-volatile uint16_t RcService::_valThr = 1500;
+volatile uint16_t RcService::_valThr = 0;
 volatile unsigned long RcService::_startStr = 0;
-volatile uint16_t RcService::_valStr = 1500;
+volatile uint16_t RcService::_valStr = 0;
 uint16_t RcService::_lastThr = 1500;
 uint16_t RcService::_lastStr = 1500;
 
@@ -33,13 +33,19 @@ void RcService::begin() {
 // Hàm này em sẽ gọi trong TaskControl (giống như network.update() trong TaskNetwork)
 void RcService::update() {
     uint16_t thr, str;
-    
+    unsigned long lastThrTime;
     // Đọc an toàn từ ISR
     noInterrupts();
     thr = _valThr;
     str = _valStr;
+    lastThrTime = _startThr;
     interrupts();
 
+    // BÍ KÍP Ở ĐÂY: Nếu quá 200ms (200,000 micro-giây) mà chân RC không nháy lên HIGH lần nào
+    // -> Tay cầm RC đã tắt hoặc chưa cắm điện -> KHÔNG BƠM DỮ LIỆU RÁC VÀO NỮA!
+    if (micros() - lastThrTime > 200000) {
+        return; // Lặng lẽ thoát ra, để InputManager tự chuyển quyền cho Web
+    }
     // Chỉ đẩy vào InputManager nếu giá trị thay đổi đáng kể (tránh spam)
     // Hoặc cứ đẩy liên tục cũng được vì InputManager xử lý rất nhanh
     _inputMgr->updateRC(thr, str);

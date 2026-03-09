@@ -6,6 +6,11 @@ InputManager::InputManager() {
     _dataRC = {1500, 1500, false};
     _dataEspNow = {1500, 1500, false};
     _dataWeb = {1500, 1500, false};
+
+    // ---> THÊM 3 DÒNG NÀY VÀO ĐỂ DỌN SẠCH RÁC BỘ NHỚ <---
+    _lastTimeRC = 0;
+    _lastTimeEspNow = 0;
+    _lastTimeWeb = 0;
 }
 
 void InputManager::begin() {}

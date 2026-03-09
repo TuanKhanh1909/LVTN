@@ -31,6 +31,7 @@ void NetworkService::begin() {
 
     //4.Khởi tạo thời gian
     _lastClientConnectedTime = millis();
+    _isWiFiOn = true;
 }
 
 void NetworkService::update() {
