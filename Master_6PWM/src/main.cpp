@@ -31,21 +31,21 @@
  */
 
 // --- CỤM BÊN TRÁI (LEFT SIDE) ---
-BldcDriver m_L1(16, 0); // Động cơ L1: Pin 16, Kênh PWM 0
-BldcDriver m_L2(13, 1); // Động cơ L2: Pin 13, Kênh PWM 1
-BldcDriver m_L3(5, 2);  // Động cơ L3: Pin 5,  Kênh PWM 2
+BldcDriver m_L1(27, 0); // Động cơ L1: Pin 16, Kênh PWM 0
+BldcDriver m_L2(14, 1); // Động cơ L2: Pin 13, Kênh PWM 1
+BldcDriver m_L3(13, 2);  // Động cơ L3: Pin 5,  Kênh PWM 2
 
-// Side Trái: Dir Pin 17, Brake Pin 23.
+// Side Trái: Dir Pin 22, Brake Pin 23.
 // reverseLogic = true: Nếu mạch của em dùng Transistor đảo mức (High = Lùi).
-RoverSide sideLeft(17, 23, true);
+RoverSide sideLeft(22, 23, true);
 
 // --- CỤM BÊN PHẢI (RIGHT SIDE) ---
-BldcDriver m_R1(4, 3);  // Động cơ R1: Pin 4,  Kênh PWM 3
-BldcDriver m_R2(27, 4); // Động cơ R2: Pin 27, Kênh PWM 4
-BldcDriver m_R3(14, 5); // Động cơ R3: Pin 14, Kênh PWM 5
+BldcDriver m_R1(17, 3);  // Động cơ R1: Pin 4,  Kênh PWM 3
+BldcDriver m_R2(16, 4); // Động cơ R2: Pin 27, Kênh PWM 4
+BldcDriver m_R3(4, 5); // Động cơ R3: Pin 14, Kênh PWM 5
 
 // Side Phải: Dir Pin 18, Brake Pin 19.
-RoverSide sideRight(18, 19, false);
+RoverSide sideRight(19, 18, false);
 
 /* --- ĐỐI TƯỢNG LOGIC HỆ THỐNG --- */
 Rover myRover;         // Bộ não trung tâm: Xử lý Mixing, FSM
@@ -56,7 +56,7 @@ InputManager inputMgr; // Bộ quản lý đầu vào: Web, RC, ESP-NOW
 NetworkService network(&inputMgr);
 
 // Tay cầm RC
-RcService rcService(&inputMgr, 22, 21); // RC Throttle Pin 22, Steering Pin 21
+RcService rcService(&inputMgr, 36, 39); // Kênh 1: RC Throttle Pin 36, Kênh 2: Steering Pin 39
 
 // =========================================================================================
 //  KHAI BÁO HÀNG ĐỢI (QUEUES - CẦU NỐI IPC GIỮA CÁC TASK)
