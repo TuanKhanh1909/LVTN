@@ -171,8 +171,25 @@ void NetworkService::onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *cli
             data[len] = 0;
             String msg = (char *)data;
 
-            // Phân tích cú pháp X:..,Y:..,POT:..
-            if (msg.startsWith("X:")) {
+            // ---> 1. XỬ LÝ LỆNH ĐỔI CHẾ ĐỘ TỪ CÔNG TẮC WEB <---
+            if (msg.startsWith("MODE:")) {
+                String mode = msg.substring(5);
+                if (mode == "WEB") {
+                    instance->_inputMgr->setControlMode(SOURCE_WEB);
+                    Serial.println("[MODE] Da chuyen sang dieu khien WEB");
+                }
+                else if (mode == "ESPNOW") {
+                    instance->_inputMgr->setControlMode(SOURCE_ESP_NOW);
+                    Serial.println("[MODE] Da chuyen sang dieu khien ESP-NOW");
+                }
+                else {
+                    instance->_inputMgr->setControlMode(SOURCE_RC);
+                    Serial.println("[MODE] Da chuyen sang dieu khien RC");
+                }
+            }
+            
+            // ---> 2. XỬ LÝ TỌA ĐỘ JOYSTICK TỪ WEB <---
+            else if (msg.startsWith("X:")) {
                 int idxY = msg.indexOf(",Y:");
                 int idxPot = msg.indexOf(",POT:");
                 if (idxY > 0 && idxPot > 0) {
@@ -180,7 +197,8 @@ void NetworkService::onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *cli
                     int y = msg.substring(idxY + 3, idxPot).toInt();
                     int pot = msg.substring(idxPot + 5).toInt();
                     
-                    // Đẩy dữ liệu vào InputManager
+                    // Chỉ cập nhật dữ liệu, quyền quyết định cho chạy hay không 
+                    // là do InputManager (Hàm getCommand) lo.
                     instance->_inputMgr->updateWeb(x, y, pot);
                 }
             }

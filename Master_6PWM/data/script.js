@@ -13,7 +13,7 @@ let currentX = 2048;   // Giữa (0-4095)
 let currentY = 2048;   // Giữa (0-4095)
 let currentPot = 0;    // Min (0-4095)
 let lastSuccessTime = 0;
-let webEnabled = false;
+let currentMode = "RC"; // Mặc định mở Web lên là đang ở mode RC
 window.addEventListener('load', onload);
 
 function onload(event) {
@@ -41,19 +41,48 @@ function initWebSocket() {
 }
 
 //Hàm xử lý nút gạt(mode)
-function toggleWebControl() {
-    webEnabled = document.getElementById('webEnableBtn').checked;
-    var statusText = document.getElementById('safetyStatus');
-    
-    if (webEnabled) {
-        statusText.innerHTML = "🟢 BẬT";
+// Hàm xử lý khi gạt 1 trong 2 nút công tắc
+function toggleMode(source) {
+    let webBtn = document.getElementById('webModeBtn');
+    let espBtn = document.getElementById('espModeBtn');
+    let statusText = document.getElementById('activeModeText');
+
+    if (source === 'WEB') {
+        if (webBtn.checked) {
+            espBtn.checked = false; // Tự động tắt nút ESP-NOW
+            currentMode = "WEB";
+            statusText.textContent = "🌐 Điều khiển bằng WEB";
+            statusText.style.color = "#3498db";
+        } else {
+            currentMode = "RC"; // Tắt Web thì tự về RC
+        }
+    } 
+    else if (source === 'ESPNOW') {
+        if (espBtn.checked) {
+            webBtn.checked = false; // Tự động tắt nút WEB
+            currentMode = "ESPNOW";
+            statusText.textContent = "📡 Điều khiển bằng ESP-NOW";
+            statusText.style.color = "#f1c40f";
+        } else {
+            currentMode = "RC"; // Tắt ESP-NOW thì tự về RC
+        }
+    }
+
+    // Nếu cả 2 nút đều đang tắt -> Báo cáo về RC
+    if (!webBtn.checked && !espBtn.checked) {
+        currentMode = "RC";
+        statusText.textContent = "🎮 Tay cầm RC (Mặc định)";
         statusText.style.color = "#2ecc71";
-        if(websocket) websocket.send("CMD_EN:1");
-    } else {
-        statusText.innerHTML = "🔴 TẮT";
-        statusText.style.color = "#e74c3c";
-        if(websocket) websocket.send("CMD_EN:0");
-        stopDrag(); // Reset về 0
+    }
+
+    // Gửi lệnh set Mode xuống ESP32
+    if(websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send("MODE:" + currentMode);
+    }
+
+    // Nếu không phải WEB thì khóa tay cầm ảo lại, ép về giữa
+    if (currentMode !== "WEB") {
+        stopDrag();
     }
 }
 
@@ -114,11 +143,27 @@ function initJoystick() {
 }
 
 function startDrag(e) {
-    if (!webEnabled) return; // Chỉ kéo khi đã bật Web Control
+    // KHÓA: Chỉ cho phép kéo Joystick khi đang ở chế độ WEB
+    if (currentMode !== "WEB") {
+        alert("Vui lòng BẬT công tắc 'Cho phép WEB lái' để điều khiển!");
+        return; 
+    }
     isDragging = true;
     const rect = joystick.parentElement.getBoundingClientRect();
     centerX = rect.left + rect.width / 2;
     centerY = rect.top + rect.height / 2;
+}
+
+function initSpeedSlider() {
+    speedSlider.addEventListener('input', function() {
+        // KHÓA: Chỉ cho phép kéo Slider khi đang ở chế độ WEB
+        if (currentMode !== "WEB") { 
+            this.value = currentPot; 
+            return;
+        } 
+        currentPot = parseInt(this.value);
+        updateVisuals(currentX, currentY, currentPot);
+    });
 }
 
 function drag(e) {
@@ -155,14 +200,6 @@ function stopDrag() {
     updateVisuals(currentX, centerY, currentPot);
 }
 
-// --- LOGIC SLIDER TỐC ĐỘ ---
-function initSpeedSlider() {
-    speedSlider.addEventListener('input', function() {
-        if (!webEnabled){ this.value = currentPot; return;} // Chỉ thay đổi khi đã bật Web Control
-        currentPot = parseInt(this.value);
-        updateVisuals(currentX, currentY, currentPot);
-    });
-}
 
 // --- GỬI DỮ LIỆU ---
 function updateValuesAndSend() {
@@ -170,7 +207,7 @@ function updateValuesAndSend() {
     if (websocket && websocket.readyState === WebSocket.OPEN) {
         
         // QUAN TRỌNG: Chỉ gửi dữ liệu điều khiển khi ĐANG BẬT CHẾ ĐỘ WEB
-        if (webEnabled) {
+        if (currentMode === "WEB") {
             let msg = `X:${currentX},Y:${currentY},POT:${currentPot}`;
             websocket.send(msg);
         }

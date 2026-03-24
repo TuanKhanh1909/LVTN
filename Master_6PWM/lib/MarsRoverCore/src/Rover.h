@@ -33,6 +33,9 @@ public:
     // Lấy trạng thái để hiển thị (VD: Đang quay trái, đang lùi...)
     MotionType getMotionType();
     
+    //----> 2 Hàm này chỉ để Unit Test <----
+    float getCurrentSpeedL() { return _currentSpeedL; } 
+    float getCurrentSpeedR() { return _currentSpeedR; }
 private:
     int pulseToSpeed(uint16_t pulse);
 };

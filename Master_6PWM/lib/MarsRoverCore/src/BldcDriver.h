@@ -19,6 +19,8 @@ public:
     // Hàm cài đặt Trim
     void setTrim(float trimValue);
     void begin();
+    // ---> THÊM HÀM NÀY ĐỂ PHỤC VỤ UNIT TEST <---
+    float getTrim() { return _trim; }
     
     // Xuất xung PWM (0-255) ra mạch lọc RC -> 0-5V Analog
     void setThrottle(int pwm);

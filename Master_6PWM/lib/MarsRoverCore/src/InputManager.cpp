@@ -2,6 +2,7 @@
 
 InputManager::InputManager() {
     _activeSource = SOURCE_NONE;
+    _targetMode = SOURCE_RC; //Khởi động lên MẶC ĐỊNH là RC
     // Giá trị an toàn mặc định (1500 = Đứng yên)
     _dataRC = {1500, 1500, false};
     _dataEspNow = {1500, 1500, false};
@@ -14,6 +15,11 @@ InputManager::InputManager() {
 }
 
 void InputManager::begin() {}
+
+// --->  HÀM NÀY VÀO BÊN DƯỚI HÀM KHỞI TẠO <---
+void InputManager::setControlMode(InputSource mode) {
+    _targetMode = mode;
+}
 
 // --- THUẬT TOÁN TRỘN XUNG (MIXING ALGORITHM) ---
 // Chuyển đổi tọa độ Web (0-4095) thành xung điều khiển (1000-2000)
@@ -67,6 +73,16 @@ void InputManager::calculateWebMixing(int x, int y, int pot, uint16_t &outL, uin
 }
 
 void InputManager::updateWeb(int x, int y, int pot) {
+    // 1. LỚP PHÒNG THỦ: Xác thực dữ liệu (Input Validation)
+    // Giới hạn hợp lệ của Web Joystick và Slider là từ 0 đến 4095
+    if (x < 0 || x > 4095 || y < 0 || y > 4095 || pot < 0 || pot > 4095) {
+        // Nếu phát hiện dữ liệu rác / hack -> Đưa xe về Failsafe (Đứng im)
+        _dataWeb.pulseL = 1500;
+        _dataWeb.pulseR = 1500;
+        _dataWeb.connected = false; // Tạm ngắt kết nối để nhường quyền cho bộ khác
+        return; // Thoát ngay lập tức, không cho phép làm toán
+    }
+    // 2. Dữ liệu sạch -> Cho phép tính toán Mixing bình thường
     uint16_t pL, pR;
     calculateWebMixing(x, y, pot, pL, pR); // Tính toán ngay lập tức
     _dataWeb.pulseL = pL;
@@ -96,11 +112,29 @@ void InputManager::calculateRCMixing(uint16_t Throttle, uint16_t Steering, uint1
     if (abs(x) < 30)
         x = 0;
 
-    // 2. Thuật toán trộn đơn giản (Arcade)
-    // Bánh Trái = Ga + Lái
-    // Bánh Phải = Ga - Lái
-    long left = y + x;
-    long right = y - x;
+    long left = 0;
+    long right = 0;
+
+    // 2. Thuật toán trộn xe tự hành (Smooth Skid-Steer Mixing)
+    if (y == 0) {
+        // TRƯỜNG HỢP 1: Xe đang không ga -> Đứng yên xoay tại chỗ (Zero-Turn)
+        left = x;
+        right = -x;
+    } else {
+        // TRƯỜNG HỢP 2: Xe đang chạy tới hoặc lùi -> Ôm cua mềm mại
+        if (x > 0) { // Đánh lái sang PHẢI
+            // Bánh Trái (ngoài) giữ nguyên tốc độ, Bánh Phải (trong) giảm tốc độ
+            left = y;
+            right = y - (y * x / 500); 
+        } else if (x < 0) { // Đánh lái sang TRÁI
+            // Bánh Phải (ngoài) giữ nguyên tốc độ, Bánh Trái (trong) giảm tốc độ
+            left = y - (y * abs(x) / 500);
+            right = y;
+        } else { // Đi thẳng (x = 0)
+            left = y;
+            right = y;
+        }
+    }
 
     // 3. Đưa về dải 1000-2000
     outL = constrain(left + 1500, 1000, 2000);
@@ -133,24 +167,40 @@ ControlCommand InputManager::getCommand() {
     finalCmd.connected = false;
     _activeSource = SOURCE_NONE;
 
-    // --- LOGIC ƯU TIÊN ---
-    // 1. Tay cầm RC (Cao nhất)
-    if (_dataRC.connected && isSourceValid(_lastTimeRC)) {
-        _activeSource = SOURCE_RC;
-        return _dataRC;
-    }
-    // 2. Tay cầm ESP-NOW
-    if (isSourceValid(_lastTimeEspNow)) {
-        _activeSource = SOURCE_ESP_NOW;
-        return _dataEspNow;
-    }
-    // 3. Web
-    if (isSourceValid(_lastTimeWeb)) {
-        _activeSource = SOURCE_WEB;
-        return _dataWeb;
+    // --- 1. NẾU ĐANG CHỌN WEB ---
+    if (_targetMode == SOURCE_WEB) {
+        if (_dataWeb.connected && isSourceValid(_lastTimeWeb)) {
+            _activeSource = SOURCE_WEB;
+            return _dataWeb;
+        } else {
+            // [CỨU HỘ] Mất kết nối Web -> Tự động đá về RC
+            Serial.println("[FAILSAFE] Mat ket noi WEB -> Chuyen ve RC!");
+            _targetMode = SOURCE_RC; 
+        }
+    } 
+    
+    // --- 2. NẾU ĐANG CHỌN ESP-NOW ---
+    if (_targetMode == SOURCE_ESP_NOW) {
+        if (_dataEspNow.connected && isSourceValid(_lastTimeEspNow)) {
+            _activeSource = SOURCE_ESP_NOW;
+            return _dataEspNow;
+        } else {
+            // [CỨU HỘ] Mất kết nối ESP-NOW -> Tự động đá về RC
+            Serial.println("[FAILSAFE] Mat ket noi ESP-NOW -> Chuyen ve RC!");
+            _targetMode = SOURCE_RC;
+        }
     }
 
-    return finalCmd; // Không có nguồn nào -> Dừng xe
+    // --- 3. NẾU ĐANG LÀ RC (Mặc định hoặc do Failsafe ép về đây) ---
+    if (_targetMode == SOURCE_RC) {
+        if (_dataRC.connected && isSourceValid(_lastTimeRC)) {
+            _activeSource = SOURCE_RC;
+            return _dataRC;
+        }
+    }
+
+    // --- 4. TẤT CẢ ĐỀU MẤT KẾT NỐI -> TRẢ VỀ 1500 (DỪNG XE) ---
+    return finalCmd;
 }
 
 InputSource InputManager::getActiveSource() {

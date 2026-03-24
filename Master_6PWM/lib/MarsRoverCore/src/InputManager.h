@@ -22,10 +22,13 @@ private:
     unsigned long _lastTimeWeb;
 
     InputSource _activeSource;
-
+    InputSource _targetMode; //Biến lưu chế độ đang được cấp phép
 public:
     InputManager();
     void begin();
+
+    //Hàm để NetworkService cập nhật chế độ từ Web
+    void setControlMode(InputSource mode);
 
     // 1. Cập nhật từ Web: Nhận X, Y, Pot -> Tính toán Mixing ngay lập tức
     void updateWeb(int x, int y, int pot);

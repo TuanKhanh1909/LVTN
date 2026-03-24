@@ -63,11 +63,27 @@ void Rover::update(ControlCommand cmd) {
             } 
             else {
                 // Soft Start: Tăng tốc từ từ đến giá trị mục tiêu
-                if (_currentSpeedL < targetSpeedL) _currentSpeedL += RAMP_STEP;
-                else _currentSpeedL -= RAMP_STEP;
+                // 1. Xử lý Bánh Trái
+                if (abs(targetSpeedL - _currentSpeedL) <= RAMP_STEP) {
+                    _currentSpeedL = targetSpeedL; // Đã gần tới đích -> Bắt dính luôn!
+                } 
+                else if (_currentSpeedL < targetSpeedL) {
+                    _currentSpeedL += RAMP_STEP;
+                } 
+                else {
+                    _currentSpeedL -= RAMP_STEP;
+                }
 
-                if (_currentSpeedR < targetSpeedR) _currentSpeedR += RAMP_STEP;
-                else _currentSpeedR -= RAMP_STEP;
+                // 2. Xử lý Bánh Phải
+                if (abs(targetSpeedR - _currentSpeedR) <= RAMP_STEP) {
+                    _currentSpeedR = targetSpeedR; // Đã gần tới đích -> Bắt dính luôn!
+                } 
+                else if (_currentSpeedR < targetSpeedR) {
+                    _currentSpeedR += RAMP_STEP;
+                } 
+                else {
+                    _currentSpeedR -= RAMP_STEP;
+                }
 
                 // Xuất lệnh ra Motor
                 _leftSide->setSpeed(_currentSpeedL);

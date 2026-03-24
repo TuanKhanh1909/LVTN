@@ -11,16 +11,32 @@
         <h1>🚀 Mars Rover Controller</h1>
     </div>
     <div class="content">
+        
         <div class="card" style="margin-bottom: 20px;">
-            <div class="safety-container">
-                <span class="safety-label">🎮 Chế độ Web:</span>
+            <p class="card-title" style="margin-bottom: 15px; text-align: center;">🎮 Nguồn Điều Khiển</p>
+            
+            <div class="safety-container" style="margin-bottom: 15px;">
+                <span class="safety-label">🌐 Cho phép WEB lái:</span>
                 <label class="switch">
-                    <input type="checkbox" id="webEnableBtn" onchange="toggleWebControl()">
+                    <input type="checkbox" id="webModeBtn" onchange="toggleMode('WEB')">
                     <span class="slider-toggle round"></span>
                 </label>
-                <span class="safety-text" id="safetyStatus">🔴 TẮT</span>
+            </div>
+
+            <div class="safety-container" style="margin-bottom: 15px;">
+                <span class="safety-label">📡 Cho phép ESP-NOW lái:</span>
+                <label class="switch">
+                    <input type="checkbox" id="espModeBtn" onchange="toggleMode('ESPNOW')">
+                    <span class="slider-toggle round"></span>
+                </label>
+            </div>
+
+            <div style="text-align: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <span style="color: #888;">Đang hoạt động: </span>
+                <span id="activeModeText" style="font-weight: bold; color: #2ecc71; font-size: 1.1rem;">🎮 Tay cầm RC</span>
             </div>
         </div>
+        
         <div class="control-grid">
             <div class="card">
                 <p class="card-title">🎮 Hướng (Direction)</p>
