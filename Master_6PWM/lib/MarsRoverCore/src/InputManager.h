@@ -23,10 +23,16 @@ private:
 
     InputSource _activeSource;
     InputSource _targetMode; //Biến lưu chế độ đang được cấp phép
+
+    // --->Cờ Khóa An Toàn (Latched Failsafe)
+    bool _isFailsafeLatched;
 public:
     InputManager();
     void begin();
 
+    // ---> THÊM DÒNG NÀY: Lấy trạng thái cờ Failsafe
+    bool isFailsafeLatched() { return _isFailsafeLatched; }
+    
     //Hàm để NetworkService cập nhật chế độ từ Web
     void setControlMode(InputSource mode);
 

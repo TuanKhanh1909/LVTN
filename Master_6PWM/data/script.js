@@ -88,32 +88,64 @@ function toggleMode(source) {
 
 function onMessage(event) {
     lastSuccessTime = Date.now();
-    // Chỉ cập nhật giao diện (Digital Twin) khi KHÔNG KÉO TAY
-    if (isDragging) return;
+    // Chỉ cập nhật giao diện JoyStick ảo khi KHÔNG KÉO TAY
+    // Nhưng các thông số Telemetry thì VẪN PHẢI CẬP NHẬT liên tục
+    
+    try {
+        // Cố gắng giải mã JSON
+        let data = JSON.parse(event.data);
+        
+        if (data.type === "tele") {
+            // --- 1. XỬ LÝ CỜ FAILSAFE ---
+            let banner = document.getElementById('failsafeBanner');
+            if (data.fs === true) {
+                banner.style.display = "block";
+                if (currentMode === "WEB") stopDrag(); // Khóa cứng tay cầm trên Web
+            } else {
+                banner.style.display = "none";
+            }
 
-    // Parse: "STATUS:1"
-    let msg = event.data;
-    if (msg.startsWith("STATUS:")) {
-        // Cắt lấy con số phía sau chữ "STATUS:" (Ví dụ "STATUS:1" -> lấy số 1)
-        let statusCode = parseInt(msg.substring(7));
-        let modeText = "⏸️ STOP";
-        
-        // Map các số nguyên (Enum MotionType) thành Text để hiển thị
-        switch(statusCode) {
-            case 0: modeText = "⏸️ STOP"; break;
-            case 1: modeText = "⬆️ FORWARD"; break;
-            case 2: modeText = "⬇️ BACKWARD"; break;
-            case 3: modeText = "↖️ FWD LEFT"; break;
-            case 4: modeText = "↗️ FWD RIGHT"; break;
-            case 5: modeText = "↙️ BCK LEFT"; break;
-            case 6: modeText = "↘️ BCK RIGHT"; break;
-            case 7: modeText = "🔄 SPIN LEFT"; break;
-            case 8: modeText = "🔄 SPIN RIGHT"; break;
+            // --- 2. CẬP NHẬT PIN ---
+            let batBadge = document.getElementById('batteryStatus');
+            let batVolts = parseFloat(data.bat).toFixed(1);
+            batBadge.textContent = "🔋 Pin: " + batVolts + "V";
+            // Đổi màu theo áp pin (Hệ 36V, đầy 42V)
+            if (data.bat >= 37.0) batBadge.style.background = "#27ae60"; // Xanh lá
+            else if (data.bat >= 34.0) batBadge.style.background = "#f39c12"; // Vàng
+            else batBadge.style.background = "#c0392b"; // Đỏ
+
+            // --- 3. CẬP NHẬT TỐC ĐỘ 6 BÁNH (RPM) ---
+            document.getElementById('rpmL1').textContent = data.rpm[0];
+            document.getElementById('rpmL2').textContent = data.rpm[1];
+            document.getElementById('rpmL3').textContent = data.rpm[2];
+            document.getElementById('rpmR1').textContent = data.rpm[3];
+            document.getElementById('rpmR2').textContent = data.rpm[4];
+            document.getElementById('rpmR3').textContent = data.rpm[5];
+
+            // --- 4. CẬP NHẬT PWM THỰC TẾ ---
+            document.getElementById('telePwmL').textContent = data.pwmL;
+            document.getElementById('telePwmR').textContent = data.pwmR;
+
+            // --- 5. CẬP NHẬT TRẠNG THÁI VẬN HÀNH ---
+            if (!isDragging) {
+                let modeText = "⏸️ STOP";
+                switch(data.motion) {
+                    case 0: modeText = "⏸️ STOP"; break;
+                    case 1: modeText = "⬆️ FORWARD"; break;
+                    case 2: modeText = "⬇️ BACKWARD"; break;
+                    case 3: modeText = "↖️ FWD LEFT"; break;
+                    case 4: modeText = "↗️ FWD RIGHT"; break;
+                    case 5: modeText = "↙️ BCK LEFT"; break;
+                    case 6: modeText = "↘️ BCK RIGHT"; break;
+                    case 7: modeText = "🔄 SPIN LEFT"; break;
+                    case 8: modeText = "🔄 SPIN RIGHT"; break;
+                }
+                document.getElementById('modeDisplay').textContent = modeText;
+            }
         }
-        
-        // Cập nhật trạng thái THỰC TẾ của xe lên màn hình
-        document.getElementById('modeDisplay').textContent = modeText;
-        return; // Đã xử lý xong gói STATUS thì thoát hàm
+    } catch (e) {
+        // Nếu chẳng may gói tin bị nhiễu rác không phải chuẩn JSON thì phớt lờ
+        console.log("JSON Parse Error: ", e);
     }
 }
 

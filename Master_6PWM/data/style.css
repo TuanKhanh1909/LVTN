@@ -46,4 +46,13 @@ input:checked + .slider-toggle:before { transform: translateX(26px); }
 .connection-ok { color: #2ecc71; border: 1px solid #27ae60; background: rgba(39, 174, 96, 0.2); }
 .connection-lost { color: #e74c3c; border: 1px solid #c0392b; background: rgba(231, 76, 60, 0.2); }
 
+/* --- TELEMETRY STYLES --- */
+.failsafe-banner { background-color: #e74c3c; color: white; text-align: center; padding: 12px; font-weight: bold; font-size: 1.1rem; animation: blinker 1s linear infinite; }
+@keyframes blinker { 50% { opacity: 0.5; } }
+.battery-badge { background: #27ae60; padding: 5px 15px; border-radius: 20px; font-weight: bold; font-size: 1.1rem; color: white;}
+.telemetry-grid { display: flex; justify-content: space-between; margin-top: 10px; }
+.tele-side h4 { color: #3498db; margin: 0 0 10px 0; font-size: 1.1rem; border-bottom: 1px solid rgba(52, 152, 219, 0.3); padding-bottom: 5px;}
+.tele-side p { margin: 8px 0; font-size: 1.1rem; color: #ccc;}
+.rpm-val { font-family: monospace; font-size: 1.3rem; font-weight: bold; color: #f1c40f; display: inline-block; width: 40px; text-align: right;}
+
 @media (max-width: 768px) { .control-grid { grid-template-columns: 1fr; } }

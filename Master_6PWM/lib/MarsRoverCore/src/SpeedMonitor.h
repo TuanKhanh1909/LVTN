@@ -4,9 +4,11 @@
 #include <Arduino.h>
 
 void setupSpeedMonitor();
-
 bool isWheelStopped(int motorID);
-
 bool isRoverCompletelyStopped();
+
+// 2 Hàm mới phục vụ Telemetry
+int16_t calculateRPM(int motorID);
+float readBatteryVoltage();
 
 #endif

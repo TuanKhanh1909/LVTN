@@ -20,7 +20,7 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <SPIFFS.h>
-
+#include <Arduino_JSON.h> // Thư viện xử lý JSON
 // =========================================================================================
 // 2. KHỞI TẠO CÁC ĐỐI TƯỢNG (OBJECT INSTANTIATION)
 // =========================================================================================
@@ -74,8 +74,9 @@ volatile bool alive_Telemetry = false;
 // =========================================================================================
 //  KHAI BÁO HÀNG ĐỢI (QUEUES - CẦU NỐI IPC GIỮA CÁC TASK)
 // =========================================================================================
-QueueHandle_t queue_Cmd;       // Truyền lệnh từ Task 1 -> Task 2
-QueueHandle_t queue_Telemetry; // Truyền trạng thái từ Task 2 -> Task 4
+QueueHandle_t queue_Cmd;         // Truyền lệnh: InputMixer -> DriveFSM
+QueueHandle_t queue_DriveStatus; // Truyền nội bộ: DriveFSM -> Sensors
+QueueHandle_t queue_Telemetry;   // Truyền cục bưu phẩm: Sensors -> Telemetry
 
 // =========================================================================
 // HỘP ĐEN GHI LOG TIMELINE RTOS
@@ -177,7 +178,11 @@ void Task_DriveFSM(void *pvParameters)
 
         // 3. CẬP NHẬT TRẠNG THÁI CHO TASK 4
         MotionType currentMotion = myRover.getMotionType();
-        xQueueOverwrite(queue_Telemetry, &currentMotion);
+        DriveStatus dStatus;
+        dStatus.pwmL = (int16_t)myRover.getCurrentSpeedL();
+        dStatus.pwmR = (int16_t)myRover.getCurrentSpeedR();
+        dStatus.motion = myRover.getMotionType();
+        xQueueOverwrite(queue_DriveStatus, &dStatus);
 
         //execTime_Drive = micros() - current_cycle_start;
         
@@ -284,36 +289,78 @@ void Task_NetworkCore(void *pvParameters)
 void Task_Telemetry(void *pvParameters)
 {
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(50); // 20Hz (Đủ mượt cho màn hình)
+    const TickType_t xFrequency = pdMS_TO_TICKS(50); 
     
-    MotionType status = MOTION_STOP;
-    MotionType oldStatus = MOTION_STOP; // Trí nhớ để không gửi trùng lặp
-
-    //uint32_t last_cycle_start = micros();
+    TelemetryPacket packet;
 
     for (;;)
     {
-        alive_Telemetry = true; // [HEARTBEAT] Báo cáo tôi còn sống!
+        alive_Telemetry = true; // [HEARTBEAT]
+        logTrace(3, true); 
 
-        //uint32_t current_cycle_start = micros();
-        //cycleTime_Tele = current_cycle_start - last_cycle_start;
-        //last_cycle_start = current_cycle_start;
-
-        logTrace(3, true); // [TASK 3 START]
-        // 1. Nhìn vào hộp thư trạng thái (Chỉ nhìn - Peek, không lấy mất của hệ thống)
-        if (xQueuePeek(queue_Telemetry, &status, 0) == pdPASS) {
+        // 1. Lấy gói bưu phẩm "Nóng hổi" nhất từ Task_Sensors
+        // Dùng xQueueReceive (xóa luôn gói trong hàng đợi) thay vì Peek
+        if (xQueueReceive(queue_Telemetry, &packet, 0) == pdPASS) {
             
-            // 2. Nếu trạng thái thay đổi thì mới gửi sóng ra ngoài
-            if (status != oldStatus) {
-                network.broadcastStatus("STATUS:" + String(status));
-                oldStatus = status;
+            // 2. Tạo đối tượng JSON
+            JSONVar jsonDoc;
+            jsonDoc["type"] = "tele";
+            jsonDoc["bat"] = (double)packet.batteryVoltage; // Ép kiểu double cho an toàn
+            
+            // Tạo mảng RPM 6 bánh
+            JSONVar rpmArray;
+            for(int i = 0; i < 6; i++) {
+                rpmArray[i] = packet.rpm[i];
             }
+            jsonDoc["rpm"] = rpmArray;
+            
+            jsonDoc["pwmL"] = packet.pwmLeft;
+            jsonDoc["pwmR"] = packet.pwmRight;
+            jsonDoc["motion"] = (int)packet.motionState;
+            jsonDoc["mode"] = (int)packet.activeMode;
+            jsonDoc["fs"] = packet.isFailsafeLatched;
+
+            // 3. Đóng gói thành chuỗi String và bắn đi qua WebSocket
+            String jsonString = JSON.stringify(jsonDoc);
+            network.broadcastStatus(jsonString);
         }
         
-        //execTime_Tele = micros() - current_cycle_start;
-        
-        logTrace(3, false); // [TASK 3 STOP]
-        // 3. Ngủ 50ms
+        logTrace(3, false); 
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
+
+/**
+ * @brief TASK 5: TRẠM ĐO LƯỜNG (Sensors Data Logger)
+ * @core 0 | Priority 3 | Chu kỳ: 20ms (50Hz)
+ */
+void Task_Sensors(void *pvParameters)
+{
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(20);
+    
+    DriveStatus dStatus = {0, 0, MOTION_STOP}; 
+
+    for (;;)
+    {
+        // 1. Nhặt dữ liệu động lực học từ Task 2 (Peek hoặc Receive đều được)
+        xQueueReceive(queue_DriveStatus, &dStatus, 0);
+
+        // 2. Gom tất cả dữ liệu vào "Bưu phẩm" TelemetryPacket
+        TelemetryPacket packet;
+        packet.batteryVoltage = readBatteryVoltage();
+        for(int i = 0; i < 6; i++) {
+            packet.rpm[i] = calculateRPM(i);
+        }
+        packet.pwmLeft = dStatus.pwmL;
+        packet.pwmRight = dStatus.pwmR;
+        packet.motionState = dStatus.motion;
+        packet.activeMode = inputMgr.getActiveSource();
+        packet.isFailsafeLatched = inputMgr.isFailsafeLatched();
+
+        // 3. Đẩy gói bưu phẩm này qua cho Task Mạng phát sóng
+        xQueueOverwrite(queue_Telemetry, &packet);
+
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
@@ -354,15 +401,17 @@ void setup()
     // 3. Khởi tạo RTOS
     // Hàng đợi chỉ cần độ dài 1 (Zero-latency design)
     queue_Cmd = xQueueCreate(1, sizeof(ControlCommand));
-    queue_Telemetry = xQueueCreate(1, sizeof(MotionType));
+   queue_DriveStatus = xQueueCreate(1, sizeof(DriveStatus)); // <--- Thêm dòng này
+    queue_Telemetry = xQueueCreate(1, sizeof(TelemetryPacket)); // <--- Sửa lại size
 
     // CHẠY TRÊN CORE 1 (CƠ KHÍ)
     xTaskCreatePinnedToCore(Task_InputMixer, "InputMixer", 4096, NULL, 3, NULL, 1);
     xTaskCreatePinnedToCore(Task_DriveFSM, "DriveFSM", 4096, NULL, 4, NULL, 1);
 
-    // CHẠY TRÊN CORE 0 (MẠNG)
+    // CHẠY TRÊN CORE 0 (MẠNG & ĐO LƯỜNG)
     xTaskCreatePinnedToCore(Task_NetworkCore, "Network", 8192, NULL, 1, NULL, 0);
     xTaskCreatePinnedToCore(Task_Telemetry, "Telemetry", 4096, NULL, 2, NULL, 0);
+    xTaskCreatePinnedToCore(Task_Sensors, "Sensors_Rx", 4096, NULL, 3, NULL, 0); // <--- Kích hoạt Task 5
 
     Serial.println("--- SYSTEM READY ---");
 }

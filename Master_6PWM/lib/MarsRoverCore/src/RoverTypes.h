@@ -46,5 +46,21 @@ enum MotionType {
     MOTION_SPIN_LEFT,   // Xoay trái tại chỗ
     MOTION_SPIN_RIGHT   // Xoay phải tại chỗ
 };
+// --- TRẠNG THÁI TỪ CƠ KHÍ GỬI LÊN (NỘI BỘ) ---
+struct DriveStatus {
+    int16_t pwmL;
+    int16_t pwmR;
+    MotionType motion;
+};
 
+// --- GÓI TIN ĐO LƯỜNG TỔNG HỢP (TELEMETRY) ---
+struct TelemetryPacket {
+    float batteryVoltage;    
+    int16_t rpm[6];          // [L1, L2, L3, R1, R2, R3]
+    int16_t pwmLeft;         
+    int16_t pwmRight;        
+    MotionType motionState;  
+    InputSource activeMode;  
+    bool isFailsafeLatched;  
+};
 #endif

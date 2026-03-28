@@ -10,8 +10,32 @@
     <div class="topnav">
         <h1>🚀 Mars Rover Controller</h1>
     </div>
+    <div id="failsafeBanner" class="failsafe-banner" style="display: none;">
+        ⚠️ HỆ THỐNG ĐÃ KHÓA AN TOÀN (FAILSAFE) - HÃY CHỌN LẠI NGUỒN ĐIỀU KHIỂN ⚠️
+    </div>
     <div class="content">
-        
+        <div class="card" style="margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <p class="card-title" style="margin-bottom: 0;">📊 Bảng Giám Sát (Telemetry)</p>
+                <div id="batteryStatus" class="battery-badge">🔋 Pin: --.-V</div>
+            </div>
+            <hr style="border-color: rgba(255,255,255,0.1); margin: 15px 0;">
+            
+            <div class="telemetry-grid">
+                <div class="tele-side">
+                    <h4>Cụm Trái (PWM: <span id="telePwmL">0</span>)</h4>
+                    <p>Bánh L1: <span id="rpmL1" class="rpm-val">0</span> RPM</p>
+                    <p>Bánh L2: <span id="rpmL2" class="rpm-val">0</span> RPM</p>
+                    <p>Bánh L3: <span id="rpmL3" class="rpm-val">0</span> RPM</p>
+                </div>
+                <div class="tele-side" style="text-align: right;">
+                    <h4>Cụm Phải (PWM: <span id="telePwmR">0</span>)</h4>
+                    <p>Bánh R1: <span id="rpmR1" class="rpm-val">0</span> RPM</p>
+                    <p>Bánh R2: <span id="rpmR2" class="rpm-val">0</span> RPM</p>
+                    <p>Bánh R3: <span id="rpmR3" class="rpm-val">0</span> RPM</p>
+                </div>
+            </div>
+        </div>
         <div class="card" style="margin-bottom: 20px;">
             <p class="card-title" style="margin-bottom: 15px; text-align: center;">🎮 Nguồn Điều Khiển</p>
             
