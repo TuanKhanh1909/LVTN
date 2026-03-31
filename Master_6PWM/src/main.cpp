@@ -323,6 +323,8 @@ void Task_Telemetry(void *pvParameters)
             // 3. Đóng gói thành chuỗi String và bắn đi qua WebSocket
             String jsonString = JSON.stringify(jsonDoc);
             network.broadcastStatus(jsonString);
+            // ---> THÊM DÒNG NÀY: Bắn dữ liệu thô dạng Byte về Tay cầm ESP-NOW <---
+            network.broadcastEspNowTelemetry(packet);
         }
         
         logTrace(3, false); 
@@ -393,11 +395,11 @@ void setup()
     myRover.setSides(&sideLeft, &sideRight);
 
     // 2. Khởi động các Dịch vụ
-    setupSpeedMonitor(); // Bật ngắt Cảm biến Hall
+    //setupSpeedMonitor(); // Bật ngắt Cảm biến Hall
     inputMgr.begin();    // Khởi động bộ quản lý đầu vào
     myRover.begin();     // Khởi động các chân PWM/Dir
     network.begin();     // Khởi động WiFi, WebServer, ESP-NOW
-    rcService.begin();   // Khởi động cho RC
+    //rcService.begin();   // Khởi động cho RC
     // 3. Khởi tạo RTOS
     // Hàng đợi chỉ cần độ dài 1 (Zero-latency design)
     queue_Cmd = xQueueCreate(1, sizeof(ControlCommand));

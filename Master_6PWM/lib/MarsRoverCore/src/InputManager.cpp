@@ -3,10 +3,10 @@
 InputManager::InputManager()
 {
     _activeSource = SOURCE_NONE;
-    _targetMode = SOURCE_RC; // Khởi động lên MẶC ĐỊNH là RC
+    _targetMode = SOURCE_NONE; // Khởi động lên MẶC ĐỊNH là RC
    
-    // Khởi tạo cờ khóa an toàn là false (Xe đang tự do)
-    _isFailsafeLatched = false;
+   // Bắt buộc người dùng phải vào Web để mở khóa
+    _isFailsafeLatched = true;
    
     // Giá trị an toàn mặc định (1500 = Đứng yên)
     _dataRC = {1500, 1500, false};
@@ -31,6 +31,9 @@ void InputManager::setControlMode(InputSource mode)
         Serial.println("[ADMIN] Da xac nhan an toan! MO KHOA FAILSAFE!");
         _isFailsafeLatched = false; 
     }
+    _lastTimeWeb = millis();
+    _lastTimeRC = millis();
+    _lastTimeEspNow = millis();
 }
 
 // --- THUẬT TOÁN TRỘN XUNG (MIXING ALGORITHM) ---
@@ -198,13 +201,13 @@ void InputManager::updateRC(uint16_t Throttle, uint16_t Steering)
     _lastTimeRC = millis();
 }
 
-bool InputManager::isSourceValid(unsigned long lastTime)
+bool InputManager::isSourceValid(unsigned long lastTime,unsigned long timeoutMs)
 {
     // Kiểm tra xem tín hiệu có còn mới không (trong vòng 200 miligiây)
-    return (millis() - lastTime < SIGNAL_TIMEOUT_MS);
+    return (millis() - lastTime < timeoutMs);
 }
 
-ControlCommand InputManager::getCommand()
+ControlCommand InputManager::getCommand()   
 {
     ControlCommand finalCmd = {1500, 1500, false};
     
@@ -224,12 +227,12 @@ ControlCommand InputManager::getCommand()
     
     // ---> KỊCH BẢN A: ADMIN CHO PHÉP WEB LÁI
     if (_targetMode == SOURCE_WEB) {
-        if (_dataWeb.connected) { // Đã từng nhận được data từ Web chưa?
-            if (isSourceValid(_lastTimeWeb)) { // Còn sóng không?
+        if (_dataWeb.connected) { 
+            // FIX: Cho phép WiFi lag tối đa 1000ms (1 giây)
+            if (isSourceValid(_lastTimeWeb, 1000)) { 
                 _activeSource = SOURCE_WEB;
                 return _dataWeb;
             } else {
-                // Đang lái mà mất sóng -> BẬT CHỐT KHÓA!
                 Serial.println("[FAILSAFE] Mat song WEB! KHOA CUNG HE THONG!");
                 _isFailsafeLatched = true;
             }
@@ -239,7 +242,8 @@ ControlCommand InputManager::getCommand()
     // ---> KỊCH BẢN B: ADMIN CHO PHÉP ESP-NOW LÁI
     else if (_targetMode == SOURCE_ESP_NOW) {
         if (_dataEspNow.connected) {
-            if (isSourceValid(_lastTimeEspNow)) {
+            // FIX: Cho phép sóng ESP-NOW lag tối đa 1000ms
+            if (isSourceValid(_lastTimeEspNow, 1000)) {
                 _activeSource = SOURCE_ESP_NOW;
                 return _dataEspNow;
             } else {
@@ -252,7 +256,8 @@ ControlCommand InputManager::getCommand()
     // ---> KỊCH BẢN C: ADMIN CHO PHÉP RC LÁI (HOẶC VỪA KHỞI ĐỘNG LÊN)
     else if (_targetMode == SOURCE_RC) {
         if (_dataRC.connected) {
-            if (isSourceValid(_lastTimeRC)) {
+            // GIỮ NGUYÊN: RC vật lý bắt buộc phải nhanh, 200ms là chốt khóa!
+            if (isSourceValid(_lastTimeRC, 200)) {
                 _activeSource = SOURCE_RC;
                 return _dataRC;
             } else {

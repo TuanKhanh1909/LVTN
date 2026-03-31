@@ -23,21 +23,29 @@
             
             <div class="telemetry-grid">
                 <div class="tele-side">
-                    <h4>Cụm Trái (PWM: <span id="telePwmL">0</span>)</h4>
-                    <p>Bánh L1: <span id="rpmL1" class="rpm-val">0</span> RPM</p>
-                    <p>Bánh L2: <span id="rpmL2" class="rpm-val">0</span> RPM</p>
-                    <p>Bánh L3: <span id="rpmL3" class="rpm-val">0</span> RPM</p>
+                    <h4>Cụm Trái (Ga gốc: <span id="telePwmL">0</span>)</h4>
+                    <p>Bánh L1: <span id="pwmL1" class="pwm-val">0</span> PWM | <span id="rpmL1" class="rpm-val">0</span> RPM</p>
+                    <p>Bánh L2: <span id="pwmL2" class="pwm-val">0</span> PWM | <span id="rpmL2" class="rpm-val">0</span> RPM</p>
+                    <p>Bánh L3: <span id="pwmL3" class="pwm-val">0</span> PWM | <span id="rpmL3" class="rpm-val">0</span> RPM</p>
                 </div>
                 <div class="tele-side" style="text-align: right;">
-                    <h4>Cụm Phải (PWM: <span id="telePwmR">0</span>)</h4>
-                    <p>Bánh R1: <span id="rpmR1" class="rpm-val">0</span> RPM</p>
-                    <p>Bánh R2: <span id="rpmR2" class="rpm-val">0</span> RPM</p>
-                    <p>Bánh R3: <span id="rpmR3" class="rpm-val">0</span> RPM</p>
+                    <h4>Cụm Phải (Ga gốc: <span id="telePwmR">0</span>)</h4>
+                    <p>Bánh R1: <span id="pwmR1" class="pwm-val">0</span> PWM | <span id="rpmR1" class="rpm-val">0</span> RPM</p>
+                    <p>Bánh R2: <span id="pwmR2" class="pwm-val">0</span> PWM | <span id="rpmR2" class="rpm-val">0</span> RPM</p>
+                    <p>Bánh R3: <span id="pwmR3" class="pwm-val">0</span> PWM | <span id="rpmR3" class="rpm-val">0</span> RPM</p>
                 </div>
             </div>
         </div>
         <div class="card" style="margin-bottom: 20px;">
             <p class="card-title" style="margin-bottom: 15px; text-align: center;">🎮 Nguồn Điều Khiển</p>
+            
+            <div class="safety-container" style="margin-bottom: 15px;">
+                <span class="safety-label">🎮 Cho phép RC lái:</span>
+                <label class="switch">
+                    <input type="checkbox" id="rcModeBtn" onchange="toggleMode('RC')">
+                    <span class="slider-toggle round"></span>
+                </label>
+            </div>
             
             <div class="safety-container" style="margin-bottom: 15px;">
                 <span class="safety-label">🌐 Cho phép WEB lái:</span>

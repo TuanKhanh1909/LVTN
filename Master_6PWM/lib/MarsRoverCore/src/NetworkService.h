@@ -25,6 +25,10 @@ private:
     const unsigned long WIFI_COOLDOWN = 10000;  //Tắt 10 giây cho giải nhiệt rồi bật lại
     unsigned long _wifiOffTime; //Thời điểm tắt WiFi
 
+    // THÊM 2 BIẾN NÀY ĐỂ LƯU MAC TAY CẦM
+    uint8_t _remoteMac[6];
+    bool _hasRemoteMac = false;
+
 public:
     // Constructor nhận vào InputManager để sau này callback gọi được nó
     NetworkService(InputManager* inputMgr);
@@ -37,6 +41,9 @@ public:
     // Gửi trạng thái về Web
     void broadcastStatus(String status);
 
+    // THÊM HÀM NÀY ĐỂ BẮN ESP-NOW VỀ TAY CẦM
+    void broadcastEspNowTelemetry(TelemetryPacket packet);
+    
 private:
     // Các hàm thiết lập nội bộ
     void setupWiFi();

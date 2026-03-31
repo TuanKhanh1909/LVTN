@@ -52,7 +52,7 @@ public:
     InputSource getActiveSource();
 
 private:
-    bool isSourceValid(unsigned long lastTime);
+    bool isSourceValid(unsigned long lastTime, unsigned long timeoutMs);
     void calculateWebMixing(int x, int y, int pot, uint16_t &outL, uint16_t &outR);
     void calculateRCMixing(uint16_t Throttle, uint16_t Steering, uint16_t &outL, uint16_t &outR);
 };

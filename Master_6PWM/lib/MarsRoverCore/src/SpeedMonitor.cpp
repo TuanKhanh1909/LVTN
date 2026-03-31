@@ -55,12 +55,12 @@ void IRAM_ATTR onHallR3() {
 
 // --- KHỞI TẠO ---
 void setupSpeedMonitor() {
-    pinMode(HALL_PIN_L1, INPUT_PULLUP); attachInterrupt(digitalPinToInterrupt(HALL_PIN_L1), onHallL1, RISING);
-    pinMode(HALL_PIN_L2, INPUT_PULLUP); attachInterrupt(digitalPinToInterrupt(HALL_PIN_L2), onHallL2, RISING);
-    pinMode(HALL_PIN_L3, INPUT_PULLUP); attachInterrupt(digitalPinToInterrupt(HALL_PIN_L3), onHallL3, RISING);
-    pinMode(HALL_PIN_R1, INPUT_PULLUP); attachInterrupt(digitalPinToInterrupt(HALL_PIN_R1), onHallR1, RISING);
-    pinMode(HALL_PIN_R2, INPUT_PULLUP); attachInterrupt(digitalPinToInterrupt(HALL_PIN_R2), onHallR2, RISING);
-    pinMode(HALL_PIN_R3, INPUT_PULLUP); attachInterrupt(digitalPinToInterrupt(HALL_PIN_R3), onHallR3, RISING);
+    pinMode(HALL_PIN_L1, INPUT); attachInterrupt(digitalPinToInterrupt(HALL_PIN_L1), onHallL1, CHANGE);
+    pinMode(HALL_PIN_L2, INPUT); attachInterrupt(digitalPinToInterrupt(HALL_PIN_L2), onHallL2, CHANGE);
+    pinMode(HALL_PIN_L3, INPUT); attachInterrupt(digitalPinToInterrupt(HALL_PIN_L3), onHallL3, CHANGE);
+    pinMode(HALL_PIN_R1, INPUT); attachInterrupt(digitalPinToInterrupt(HALL_PIN_R1), onHallR1, CHANGE);
+    pinMode(HALL_PIN_R2, INPUT); attachInterrupt(digitalPinToInterrupt(HALL_PIN_R2), onHallR2, CHANGE);
+    pinMode(HALL_PIN_R3, INPUT); attachInterrupt(digitalPinToInterrupt(HALL_PIN_R3), onHallR3, CHANGE);
 
     pinMode(BATTERY_PIN, INPUT);
     // Lấy mẫu nháp đầu tiên. Công thức V_in = (ADC/4095) * 3.3 * (160k+10k)/10k = (ADC/4095) * 56.1

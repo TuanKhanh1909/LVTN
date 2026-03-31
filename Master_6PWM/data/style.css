@@ -54,5 +54,5 @@ input:checked + .slider-toggle:before { transform: translateX(26px); }
 .tele-side h4 { color: #3498db; margin: 0 0 10px 0; font-size: 1.1rem; border-bottom: 1px solid rgba(52, 152, 219, 0.3); padding-bottom: 5px;}
 .tele-side p { margin: 8px 0; font-size: 1.1rem; color: #ccc;}
 .rpm-val { font-family: monospace; font-size: 1.3rem; font-weight: bold; color: #f1c40f; display: inline-block; width: 40px; text-align: right;}
-
+.pwm-val { font-family: monospace; font-size: 1.3rem; font-weight: bold; color: #e67e22; display: inline-block; width: 40px; text-align: right;}
 @media (max-width: 768px) { .control-grid { grid-template-columns: 1fr; } }

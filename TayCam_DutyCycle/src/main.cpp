@@ -28,6 +28,19 @@ typedef struct {
   uint16_t pulse_right;
 } ControlPacket;
 ControlPacket dataToSend;
+// ---> THÊM CẤU TRÚC ĐỂ HỨNG DỮ LIỆU TỪ XE GỬI VỀ <---
+typedef struct {
+    float batteryVoltage;    
+    int16_t rpm[6];          
+    int16_t pwmLeft;         
+    int16_t pwmRight;        
+    int motionState;  // Ép kiểu int cho Enum
+    int activeMode;   // Ép kiểu int cho Enum
+    bool isFailsafeLatched;  
+} TelemetryPacket;
+
+TelemetryPacket roverData = {0.0, {0}, 0, 0, 0, 0, true};
+unsigned long lastRoverDataTime = 0; // Thời gian nhận data cuối cùng
 
 #define EEPROM_SIZE 16
 #define EEPROM_MAGIC_VALUE 0xCA
@@ -100,6 +113,14 @@ void runCalibration() {
   ESP.restart();
 }
 
+// --- HÀM CALLBACK KHI NHẬN ĐƯỢC DATA TỪ XE ---
+void onDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  if (len == sizeof(TelemetryPacket)) {
+    memcpy(&roverData, incomingData, sizeof(roverData));
+    lastRoverDataTime = millis();
+  }
+}
+
 void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   if (status == ESP_NOW_SEND_SUCCESS) {
     lastSuccessTime = millis(); // CẬP NHẬT THỜI GIAN KHI GỬI THÀNH CÔNG
@@ -141,6 +162,7 @@ void setup() {
   WiFi.mode(WIFI_STA);
   if (esp_now_init() != ESP_OK) { return; }
   esp_now_register_send_cb(onDataSent);
+  esp_now_register_recv_cb(onDataRecv); // <--- ĐĂNG KÝ HÀM NHẬN Ở ĐÂY
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, receiverMAC, 6);
   peerInfo.channel = 0;
@@ -209,32 +231,37 @@ void loop() {
     dataToSend.pulse_right = pulse_right;
     esp_now_send(receiverMAC, (uint8_t *)&dataToSend, sizeof(dataToSend));
     
-    /// --- BƯỚC 5: HIỂN THỊ LÊN LCD (THEO THỨ TỰ MỚI) ---
-    char buffer[21]; // Buffer cho LCD 20 cột, +1 cho ký tự null
+    // --- BƯỚC 5: HIỂN THỊ LÊN LCD 20x4 CHUẨN CÔNG NGHIỆP ---
+    char buffer[21]; // Buffer cho LCD 20 cột
     
-    // Dòng 1: Tọa độ X, Y (giá trị đã được lọc nhiễu)
+    // Dòng 1: Tọa độ X, Y
     lcd.setCursor(0, 0);
-    sprintf(buffer, "X:%4.0f   Y:%4.0f", joyX_filtered, joyY_filtered);
+    sprintf(buffer, "X:%-4.0f   Y:%-4.0f", joyX_filtered, joyY_filtered);
     lcd.printf("%-20s", buffer);
 
-    // Dòng 2: Speed
-    uint8_t display_speed = map(speed_percent, 0, 100, 0, 255);
+    // Dòng 2: Tốc độ % và ĐIỆN ÁP PIN TỪ XE GỬI VỀ
     lcd.setCursor(0, 1);
-    sprintf(buffer, "Speed: %3d/255", display_speed);
-    lcd.printf("%-20s", buffer);
-
-    // Dòng 3: Mode
-    lcd.setCursor(0, 2);
-    sprintf(buffer, "Mode: %s", modeStr.c_str());
-    lcd.printf("%-20s", buffer);
-
-    // Dòng 4: Trạng thái kết nối
-    lcd.setCursor(0, 3);
-    if (millis() - lastSuccessTime < 2000) { // Nếu gửi thành công trong vòng 2 giây gần nhất
-      sprintf(buffer, "Connection: OK");
-    } else {
-      sprintf(buffer, "Connection: LOST!");
+    if (millis() - lastRoverDataTime < 2000) { // Có sóng 2 chiều
+        sprintf(buffer, "Spd:%3d%%  Bat:%.1fV", speed_percent, roverData.batteryVoltage);
+    } else { // Mất sóng chiều về
+        sprintf(buffer, "Spd:%3d%%  Bat:--.-V", speed_percent);
     }
+    lcd.printf("%-20s", buffer);
+
+    // Dòng 3: Trạng thái cơ khí
+    lcd.setCursor(0, 2);
+    sprintf(buffer, "Cmd:%s", modeStr.c_str());
+    lcd.printf("%-20s", buffer);
+
+    // Dòng 4: Tình trạng kết nối RF & Trạng thái Khóa Failsafe
+    lcd.setCursor(0, 3);
+    String connStr = (millis() - lastSuccessTime < 2000) ? "RF:OK " : "RF:ERR";
+    
+    String fsStr = "FS:--";
+    if (millis() - lastRoverDataTime < 2000) { // Nếu nhận được tín hiệu từ xe
+        fsStr = roverData.isFailsafeLatched ? "FS:LOCKED" : "FS:SAFE";
+    }
+    sprintf(buffer, "%s %s", connStr.c_str(), fsStr.c_str());
     lcd.printf("%-20s", buffer);
 
     // In ra Serial Monitor để debug

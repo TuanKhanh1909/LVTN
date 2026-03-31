@@ -13,7 +13,7 @@ let currentX = 2048;   // Giữa (0-4095)
 let currentY = 2048;   // Giữa (0-4095)
 let currentPot = 0;    // Min (0-4095)
 let lastSuccessTime = 0;
-let currentMode = "RC"; // Mặc định mở Web lên là đang ở mode RC
+let currentMode = "NONE"; // Đổi khởi tạo ban đầu thành Khóa (NONE)
 window.addEventListener('load', onload);
 
 function onload(event) {
@@ -41,38 +41,43 @@ function initWebSocket() {
 }
 
 //Hàm xử lý nút gạt(mode)
-// Hàm xử lý khi gạt 1 trong 2 nút công tắc
+// Hàm xử lý khi gạt 1 trong 3 nút công tắc
 function toggleMode(source) {
     let webBtn = document.getElementById('webModeBtn');
     let espBtn = document.getElementById('espModeBtn');
+    let rcBtn = document.getElementById('rcModeBtn');
     let statusText = document.getElementById('activeModeText');
 
     if (source === 'WEB') {
         if (webBtn.checked) {
-            espBtn.checked = false; // Tự động tắt nút ESP-NOW
+            espBtn.checked = false; rcBtn.checked = false;
             currentMode = "WEB";
             statusText.textContent = "🌐 Điều khiển bằng WEB";
             statusText.style.color = "#3498db";
-        } else {
-            currentMode = "RC"; // Tắt Web thì tự về RC
-        }
+        } else currentMode = "NONE";
     } 
     else if (source === 'ESPNOW') {
         if (espBtn.checked) {
-            webBtn.checked = false; // Tự động tắt nút WEB
+            webBtn.checked = false; rcBtn.checked = false;
             currentMode = "ESPNOW";
             statusText.textContent = "📡 Điều khiển bằng ESP-NOW";
             statusText.style.color = "#f1c40f";
-        } else {
-            currentMode = "RC"; // Tắt ESP-NOW thì tự về RC
-        }
+        } else currentMode = "NONE";
+    }
+    else if (source === 'RC') {
+        if (rcBtn.checked) {
+            webBtn.checked = false; espBtn.checked = false;
+            currentMode = "RC";
+            statusText.textContent = "🎮 Tay cầm RC";
+            statusText.style.color = "#2ecc71";
+        } else currentMode = "NONE";
     }
 
-    // Nếu cả 2 nút đều đang tắt -> Báo cáo về RC
-    if (!webBtn.checked && !espBtn.checked) {
-        currentMode = "RC";
-        statusText.textContent = "🎮 Tay cầm RC (Mặc định)";
-        statusText.style.color = "#2ecc71";
+    // Nếu cả 3 nút đều đang tắt -> Ép về chế độ Khóa
+    if (!webBtn.checked && !espBtn.checked && !rcBtn.checked) {
+        currentMode = "NONE";
+        statusText.textContent = "⛔ ĐÃ KHÓA (Chưa chọn nguồn)";
+        statusText.style.color = "#e74c3c";
     }
 
     // Gửi lệnh set Mode xuống ESP32
@@ -122,12 +127,20 @@ function onMessage(event) {
             document.getElementById('rpmR2').textContent = data.rpm[4];
             document.getElementById('rpmR3').textContent = data.rpm[5];
 
+            // TÍNH TOÁN PWM TỪNG BÁNH (Dựa trên hệ số Trim trong main.cpp)
+            document.getElementById('pwmL1').textContent = data.pwmL; // Trim 1.0
+            document.getElementById('pwmL2').textContent = Math.round(data.pwmL * 0.9); // Trim 0.9
+            document.getElementById('pwmL3').textContent = data.pwmL; // Trim 1.0
+            
+            document.getElementById('pwmR1').textContent = data.pwmR; // Trim 1.0
+            document.getElementById('pwmR2').textContent = Math.round(data.pwmR * 0.92); // Trim 0.92
+            document.getElementById('pwmR3').textContent = data.pwmR; // Trim 1.0
+
             // --- 4. CẬP NHẬT PWM THỰC TẾ ---
             document.getElementById('telePwmL').textContent = data.pwmL;
             document.getElementById('telePwmR').textContent = data.pwmR;
 
             // --- 5. CẬP NHẬT TRẠNG THÁI VẬN HÀNH ---
-            if (!isDragging) {
                 let modeText = "⏸️ STOP";
                 switch(data.motion) {
                     case 0: modeText = "⏸️ STOP"; break;
@@ -141,7 +154,7 @@ function onMessage(event) {
                     case 8: modeText = "🔄 SPIN RIGHT"; break;
                 }
                 document.getElementById('modeDisplay').textContent = modeText;
-            }
+            
         }
     } catch (e) {
         // Nếu chẳng may gói tin bị nhiễu rác không phải chuẩn JSON thì phớt lờ
@@ -229,7 +242,7 @@ function stopDrag() {
    // joystick.style.transform = 'translate(-50%, -50%)';
     currentX = 2048; // Về giữa
     currentY = 2048; // Về giữa
-    updateVisuals(currentX, centerY, currentPot);
+    updateVisuals(currentX, currentY, currentPot);
 }
 
 

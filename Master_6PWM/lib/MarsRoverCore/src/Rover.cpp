@@ -1,7 +1,6 @@
 #include "Rover.h"
 
 #define BRAKE_TIME_MS 1000 // Thời gian chờ tối thiểu khi đảo chiều
-#define RAMP_STEP 5.0      // Bước tăng tốc (Soft start) - Chỉnh nhỏ thì xe mượt, chỉnh lớn thì xe bốc
 
 Rover::Rover() {
     _currentState = STATE_IDLE;
@@ -57,35 +56,17 @@ void Rover::update(ControlCommand cmd) {
 
         case STATE_DRIVING:
             // Logic bảo vệ: Nếu đang chạy nhanh (>50) mà đảo chiều đột ngột -> Phanh gấp
-            if (desireForward != _isTargetForward && (abs(_currentSpeedL) > 50 || abs(_currentSpeedR) > 50)) {
+            if (desireForward != _isTargetForward) {
                 _currentState = STATE_BRAKING_TO_SWITCH;
                 _brakeStartTime = millis();
             } 
             else {
-                // Soft Start: Tăng tốc từ từ đến giá trị mục tiêu
-                // 1. Xử lý Bánh Trái
-                if (abs(targetSpeedL - _currentSpeedL) <= RAMP_STEP) {
-                    _currentSpeedL = targetSpeedL; // Đã gần tới đích -> Bắt dính luôn!
-                } 
-                else if (_currentSpeedL < targetSpeedL) {
-                    _currentSpeedL += RAMP_STEP;
-                } 
-                else {
-                    _currentSpeedL -= RAMP_STEP;
-                }
+                // --- ĐIỀU KHIỂN TRỰC TIẾP (DIRECT DRIVE) ---
+                // Truyền thẳng lệnh từ Joystick xuống Motor mà không qua bộ đệm
+                _currentSpeedL = targetSpeedL;
+                _currentSpeedR = targetSpeedR;
 
-                // 2. Xử lý Bánh Phải
-                if (abs(targetSpeedR - _currentSpeedR) <= RAMP_STEP) {
-                    _currentSpeedR = targetSpeedR; // Đã gần tới đích -> Bắt dính luôn!
-                } 
-                else if (_currentSpeedR < targetSpeedR) {
-                    _currentSpeedR += RAMP_STEP;
-                } 
-                else {
-                    _currentSpeedR -= RAMP_STEP;
-                }
-
-                // Xuất lệnh ra Motor
+                // Xuất lệnh ra Motor ngay lập tức
                 _leftSide->setSpeed(_currentSpeedL);
                 _rightSide->setSpeed(_currentSpeedR);
             }

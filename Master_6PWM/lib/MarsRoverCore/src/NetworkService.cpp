@@ -156,6 +156,21 @@ void NetworkService::setupWebServer() {
 
 void NetworkService::onEspNowRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     if (len == sizeof(EspNowPacket) && instance != nullptr) {
+        
+        // --- THUẬT TOÁN AUTO-PAIRING ---
+        // Nếu xe chưa biết MAC của tay cầm, nó sẽ copy MAC này và thêm vào danh sách Peer
+        if (!instance->_hasRemoteMac) {
+            memcpy(instance->_remoteMac, mac, 6);
+            esp_now_peer_info_t peerInfo = {};
+            memcpy(peerInfo.peer_addr, instance->_remoteMac, 6);
+            peerInfo.channel = 0;
+            peerInfo.encrypt = false;
+            if (esp_now_add_peer(&peerInfo) == ESP_OK) {
+                instance->_hasRemoteMac = true;
+                Serial.println("[ESP-NOW] Da luu MAC Tay Cam va Add Peer thanh cong!");
+            }
+        }
+
         EspNowPacket data;
         memcpy(&data, incomingData, sizeof(data));
         // Gọi vào InputManager thông qua con trỏ instance
@@ -182,9 +197,13 @@ void NetworkService::onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *cli
                     instance->_inputMgr->setControlMode(SOURCE_ESP_NOW);
                     Serial.println("[MODE] Da chuyen sang dieu khien ESP-NOW");
                 }
-                else {
+                else if (mode == "RC") { // Thêm bộ giải mã cho RC
                     instance->_inputMgr->setControlMode(SOURCE_RC);
                     Serial.println("[MODE] Da chuyen sang dieu khien RC");
+                }
+                else { // Nếu nhận lệnh NONE (Tắt hết công tắc)
+                    instance->_inputMgr->setControlMode(SOURCE_NONE);
+                    Serial.println("[MODE] KHOA HE THONG (CHUA CHON NGUON)");
                 }
             }
             
@@ -203,5 +222,13 @@ void NetworkService::onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *cli
                 }
             }
         }
+    }
+}
+
+void NetworkService::broadcastEspNowTelemetry(TelemetryPacket packet) {
+    // Chỉ gửi khi WiFi đang bật và đã bắt được MAC của tay cầm
+    if (_isWiFiOn && _hasRemoteMac) {
+        // Ép kiểu gói bưu phẩm TelemetryPacket thành mảng Byte và bắn đi
+        esp_now_send(_remoteMac, (uint8_t *)&packet, sizeof(TelemetryPacket));
     }
 }
