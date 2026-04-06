@@ -45,7 +45,7 @@ BldcDriver m_R2(16, 4); // Động cơ R2: Pin 27, Kênh PWM 4
 BldcDriver m_R3(4, 5); // Động cơ R3: Pin 14, Kênh PWM 5
 
 // Side Phải: Dir Pin 18, Brake Pin 19.
-RoverSide sideRight(19, 18, false);
+RoverSide sideRight(19, 18, true);
 
 /* --- ĐỐI TƯỢNG LOGIC HỆ THỐNG --- */
 Rover myRover;         // Bộ não trung tâm: Xử lý Mixing, FSM
@@ -194,7 +194,7 @@ void Task_DriveFSM(void *pvParameters)
 
 /**
  * @brief TASK 3: BẢO VỆ MẠNG & HỆ THỐNG (Network Core)
- * @core 0 | Priority 1 (Thấp nhất) | Chu kỳ: 10ms
+ * @core 0 | Priority 1 (Thấp nhất) | Chu kỳ: 100ms
  */
 void Task_NetworkCore(void *pvParameters)
 {
@@ -277,8 +277,8 @@ void Task_NetworkCore(void *pvParameters)
 
         execTime_Net = micros() - current_cycle_start;
         */
-        // 2. Nhường CPU 10ms để dỗ Watchdog Timer của lõi 0
-        vTaskDelay(pdMS_TO_TICKS(10));
+        // 2. Nhường CPU 100ms để dỗ Watchdog Timer của lõi 0
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
