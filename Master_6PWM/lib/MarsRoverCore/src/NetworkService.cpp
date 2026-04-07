@@ -108,7 +108,15 @@ void NetworkService::enableWiFi(){
 }
 void NetworkService::broadcastStatus(String status) {
     if(_isWiFiOn && WiFi.softAPgetStationNum() > 0){
-        _ws.textAll(status);
+        // CHỐNG TRÀN BỘ NHỚ (DROP FRAME CACHING)
+        // 1. Kiểm tra xem có ai thực sự đang mở trang Web không (_ws.count() > 0)
+        // 2. Kiểm tra xem hàng đợi WebSocket có đang rảnh rỗi không (availableForWriteAll)
+        if (_ws.count() > 0 && _ws.availableForWriteAll()) {
+            _ws.textAll(status);
+        } else {
+            // Nếu mạng đang nghẽn, thà "Bỏ rơi" (Drop) gói tin này còn hơn làm tràn RAM
+            // Lặng lẽ bỏ qua, không làm gì cả
+        }
     }
 }   
 
