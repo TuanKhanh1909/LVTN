@@ -4,85 +4,73 @@
  * @author Nguyen Pham Tuan Khanh
  * @details
  * - Hệ điều hành: FreeRTOS (Dual-Core).
- * - Core 1: Xử lý Động lực học & Cơ khí (Task 1: InputMixer, Task 2: DriveFSM).
- * - Core 0: Xử lý Mạng & Sự kiện (Task 3: NetworkCore, Task 4: Telemetry).
+ * - Core 1: Xử lý Động lực học & Cơ khí (Task_Command, Task_Control).
+ * - Core 0: Xử lý Mạng & Đo lường (Task_Input, Task_Report, Task_SystemMonitor).
  */
 // =========================================================================================
 // 1. CÁC THƯ VIỆN (LIBRARY INSTANTIATION)
 // =========================================================================================
 #include <Arduino.h>
-#include <MarsRoverCore.h> // Thư viện lõi tự viết (Chứa logic Rover, Driver, Network...)
+#include <MarsRoverCore.h> 
 #include "SpeedMonitor.h"
 
-// --- CÁC THƯ VIỆN MẠNG ---
 #include <WiFi.h>
 #include <esp_now.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <SPIFFS.h>
-#include <Arduino_JSON.h> // Thư viện xử lý JSON
+#include <Arduino_JSON.h> 
+
 // =========================================================================================
 // 2. KHỞI TẠO CÁC ĐỐI TƯỢNG (OBJECT INSTANTIATION)
 // =========================================================================================
 
-/* --- CẤU HÌNH PHẦN CỨNG ĐỘNG CƠ ---
- * Sử dụng Class BldcDriver để trừu tượng hóa việc điều khiển PWM.
- * Lưu ý: Logic đảo chiều (ReverseLogic) cần kiểm tra thực tế trên mạch.
- */
-
 // --- CỤM BÊN TRÁI (LEFT SIDE) ---
-BldcDriver m_L1(27, 0); // Động cơ L1: Pin 16, Kênh PWM 0
-BldcDriver m_L2(14, 1); // Động cơ L2: Pin 13, Kênh PWM 1
-BldcDriver m_L3(13, 2);  // Động cơ L3: Pin 5,  Kênh PWM 2
-
-// Side Trái: Dir Pin 22, Brake Pin 23.
-// reverseLogic = true: Nếu mạch của em dùng Transistor đảo mức (High = Lùi).
+BldcDriver m_L1(27, 0); 
+BldcDriver m_L2(14, 1); 
+BldcDriver m_L3(13, 2); 
 RoverSide sideLeft(22, 23, true);
 
 // --- CỤM BÊN PHẢI (RIGHT SIDE) ---
-BldcDriver m_R1(17, 3);  // Động cơ R1: Pin 4,  Kênh PWM 3
-BldcDriver m_R2(16, 4); // Động cơ R2: Pin 27, Kênh PWM 4
-BldcDriver m_R3(4, 5); // Động cơ R3: Pin 14, Kênh PWM 5
-
-// Side Phải: Dir Pin 18, Brake Pin 19.
+BldcDriver m_R1(17, 3); 
+BldcDriver m_R2(16, 4); 
+BldcDriver m_R3(4, 5);  
 RoverSide sideRight(19, 18, true);
 
 /* --- ĐỐI TƯỢNG LOGIC HỆ THỐNG --- */
-Rover myRover;         // Bộ não trung tâm: Xử lý Mixing, FSM
-InputManager inputMgr; // Bộ quản lý đầu vào: Web, RC, ESP-NOW
+Rover myRover;         
+InputManager inputMgr; 
 
 /* --- ĐỐI TƯỢNG DỊCH VỤ MẠNG --- */
-// Truyền địa chỉ inputMgr vào để NetworkService có thể cập nhật lệnh điều khiển
 NetworkService network(&inputMgr);
-
-// Tay cầm RC
-RcService rcService(&inputMgr, 36, 39); // Kênh 1: RC Throttle Pin 36, Kênh 2: Steering Pin 39
+RcService rcService(&inputMgr, 36, 39); 
 
 // --- KHAI BÁO CÁC BIẾN ĐO LƯỜNG RTOS (PROFILING) ---
-volatile uint32_t execTime_Drive = 0, cycleTime_Drive = 0;
-volatile uint32_t execTime_Input = 0, cycleTime_Input = 0;
-volatile uint32_t execTime_Tele = 0,  cycleTime_Tele = 0;
-volatile uint32_t execTime_Net = 0,   cycleTime_Net = 0;
-volatile uint32_t execTime_Sensors = 0, cycleTime_Sensors = 0;
+// Đã đổi tên chuẩn theo sơ đồ
+volatile uint32_t execTime_Command = 0, cycleTime_Command = 0;
+volatile uint32_t execTime_Control = 0, cycleTime_Control = 0;
+volatile uint32_t execTime_Input = 0,   cycleTime_Input = 0;
+volatile uint32_t execTime_Report = 0,  cycleTime_Report = 0;
+volatile uint32_t execTime_Monitor = 0, cycleTime_Monitor = 0;
 
 // =========================================================================
 // BIẾN KIỂM TRA DEADLOCK (HEARTBEAT)
 // =========================================================================
-volatile bool alive_DriveFSM = false;
-volatile bool alive_InputMixer = false;
-volatile bool alive_Telemetry = false;
+volatile bool alive_Command = false;
+volatile bool alive_Control = false;
+volatile bool alive_Report = false;
 
 // =========================================================================================
-//  KHAI BÁO HÀNG ĐỢI (QUEUES - CẦU NỐI IPC GIỮA CÁC TASK)
+//  KHAI BÁO HÀNG ĐỢI (QUEUES - THEO ĐÚNG SƠ ĐỒ)
 // =========================================================================================
-QueueHandle_t queue_Cmd;         // Truyền lệnh: InputMixer -> DriveFSM
-QueueHandle_t queue_DriveStatus; // Truyền nội bộ: DriveFSM -> Sensors
-QueueHandle_t queue_Telemetry;   // Truyền cục bưu phẩm: Sensors -> Telemetry
+QueueHandle_t queue_Cmd;         // Truyền lệnh: Task_Command -> Task_Control
+QueueHandle_t queue_DriveStatus; // Truyền nội bộ: Task_Control -> Task_Input
+QueueHandle_t queue_Report;      // Truyền bưu phẩm: Task_Input -> Task_Report
 
 // =========================================================================
 // HỘP ĐEN GHI LOG TIMELINE RTOS
 // =========================================================================
-#define TRACE_SIZE 300  // Lưu tối đa 300 sự kiện
+#define TRACE_SIZE 300 
 struct TraceEvent {
     uint32_t time_us;
     uint8_t task_id;
@@ -90,9 +78,8 @@ struct TraceEvent {
 };
 TraceEvent traceLog[TRACE_SIZE];
 volatile int traceIndex = 0;
-volatile bool doTrace = false;  // Cờ kích hoạt hộp đen
+volatile bool doTrace = false; 
 
-// Hàm ghi log siêu tốc (chỉ mất ~1 micro-giây)
 void logTrace(uint8_t task_id, bool is_start) {
     if (!doTrace || traceIndex >= TRACE_SIZE) return;
     traceLog[traceIndex].time_us = micros();
@@ -106,272 +93,103 @@ void logTrace(uint8_t task_id, bool is_start) {
 // =========================================================================================
 
 /**
- * @brief TASK 1: NGƯỜI GOM LỆNH (Input Mixer)
- *@core 1 | Priority 3 | Chu kỳ: 20ms (50Hz)
- * @details Chịu trách nhiệm lái xe, đảm bảo an toàn và phản hồi nhanh.
+ * @brief TASK: COMMAND (Người gom lệnh)
+ * @core 1 | Priority 3 | Chu kỳ: 20ms (50Hz)
  */
-void Task_InputMixer(void *pvParameters)
+void Task_Command(void *pvParameters)
 {
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(20); // Chu kỳ 20ms
-   
-    uint32_t last_cycle_start = micros(); //Bấm giờ chu kỳ
+    const TickType_t xFrequency = pdMS_TO_TICKS(20); 
 
-    for (;;)
-    {
-        alive_InputMixer = true; // [HEARTBEAT] Báo cáo tôi còn sống!
+    uint32_t last_cycle_start = micros(); 
+
+    for (;;) {
+        alive_Command = true; // [HEARTBEAT]
 
         uint32_t current_cycle_start = micros();
-        cycleTime_Input = current_cycle_start - last_cycle_start;
+        cycleTime_Command = current_cycle_start - last_cycle_start;
         last_cycle_start = current_cycle_start;
-        logTrace(2, true); // [TASK 2 START]
+        logTrace(2, true); 
+
         // 1. Cập nhật dữ liệu phần cứng (RC)
         rcService.update();
 
-        // 2. Lấy lệnh ưu tiên cao nhất đã được trộn sẵn (Mixer & Failsafe)
+        // 2. Lấy lệnh ưu tiên cao nhất
         ControlCommand readyCmd = inputMgr.getCommand();
 
-        // 3. Đẩy lệnh cho cơ khí (Ghi đè - Luôn giữ lệnh mới nhất)
+        // 3. Đẩy lệnh vào Queue_Cmd
         xQueueOverwrite(queue_Cmd, &readyCmd);
 
-        execTime_Input = micros() - current_cycle_start;
-
-        logTrace(2, false); // [TASK 2 STOP]
-
-        // 4. Ngủ tuyệt đối chuẩn 20ms
+        execTime_Command = micros() - current_cycle_start;
+        logTrace(2, false); 
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
 /**
- * @brief TASK 2: TRÁI TIM CƠ KHÍ (Drive FSM)
+ * @brief TASK: CONTROL (Trái tim Cơ khí / FSM)
  * @core 1 | Priority 4 (Cao nhất) | Chu kỳ: 20ms (50Hz)
- * @details Xử lý chính.
  */
-void Task_DriveFSM(void *pvParameters)
+void Task_Control(void *pvParameters)
 {
     TickType_t xLastWakeTime = xTaskGetTickCount();
     const TickType_t xFrequency = pdMS_TO_TICKS(20);
-    
+
     uint32_t last_cycle_start = micros();
+    ControlCommand currentCmd = {1500, 1500, false};
 
-    // Lệnh lưu trữ nội bộ của Task 2
-    ControlCommand currentCmd;
-    currentCmd.pulseL = 1500; currentCmd.pulseR = 1500; currentCmd.connected = false;
-
-    for (;;)
-    {
-        alive_DriveFSM = true; // [HEARTBEAT] Báo cáo tôi còn sống!
+    for (;;) {
+        alive_Control = true; // [HEARTBEAT]
 
         uint32_t current_cycle_start = micros();
-        cycleTime_Drive = current_cycle_start - last_cycle_start;
+        cycleTime_Control = current_cycle_start - last_cycle_start;
         last_cycle_start = current_cycle_start;
+        logTrace(1, true); 
 
-        logTrace(1, true); // [TASK 1 START]
+        // 1. Mở hộp thư từ QUEUE_CMD
+        xQueueReceive(queue_Cmd, &currentCmd, 0);
 
-        // 1. MỞ HỘP THƯ (Timeout = 0: Không có thư thì thôi, KHÔNG chờ đợi!)
-        if (xQueueReceive(queue_Cmd, &currentCmd, 0) == pdPASS) {
-            // Lấy được thư mới, currentCmd đã được cập nhật
-        }
-
-        // 2. CHẠY CƠ KHÍ (Dù mạng lag không có thư mới, nó vẫn lấy thư cũ ra chạy để tính Soft-start)
+        // 2. Chạy Cơ khí
         myRover.update(currentCmd);
 
-        // 3. CẬP NHẬT TRẠNG THÁI CHO TASK 4
-        MotionType currentMotion = myRover.getMotionType();
+        // 3. Đẩy trạng thái vào QUEUE_DRIVE_STATUS
         DriveStatus dStatus;
         dStatus.pwmL = (int16_t)myRover.getCurrentSpeedL();
         dStatus.pwmR = (int16_t)myRover.getCurrentSpeedR();
         dStatus.motion = myRover.getMotionType();
         xQueueOverwrite(queue_DriveStatus, &dStatus);
 
-        execTime_Drive = micros() - current_cycle_start;
-        
-        logTrace(1, false); // [TASK 1 STOP]
-        // 4. NGỦ CHUẨN XÁC 20ms
+        execTime_Control = micros() - current_cycle_start;
+        logTrace(1, false); 
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
 /**
- * @brief TASK 3: BẢO VỆ MẠNG & HỆ THỐNG (Network Core)
- * @core 0 | Priority 1 (Thấp nhất) | Chu kỳ: 100ms
- */
-void Task_NetworkCore(void *pvParameters)
-{
-    uint32_t lastPrintTime1 = millis();
-    uint32_t lastPrintTime2 = millis();
-    uint32_t last_cycle_start = micros();
-    
-    for (;;)
-    {
-        uint32_t current_cycle_start = micros();
-        cycleTime_Net = current_cycle_start - last_cycle_start;
-        last_cycle_start = current_cycle_start;
-        
-        logTrace(4, true); // [TASK 4 START]
-
-        // 1. Duy trì WiFi, dọn dẹp WebSockets và Bảo vệ Nhiệt độ chip
-        network.update();
-        
-        logTrace(4, false); // [TASK 4 STOP]
-        
-        // ====================================================================
-        // 1. MỖI 2 GIÂY IN BÁO CÁO TỔNG HỢP (DEADLOCK + HIỆU NĂNG) 1 LẦN
-        // ====================================================================
-        if (millis() - lastPrintTime1 >= 2000) {
-            Serial.println("\n=== BÁO CÁO TỔNG HỢP RTOS ===");
-            
-            // --- A. Kiểm tra Deadlock ---
-            Serial.print("Trang thai Deadlock: ");
-            if (alive_DriveFSM && alive_InputMixer && alive_Telemetry) {
-                Serial.println("[SAFE] Khong phat hien Deadlock. Tat ca cac Task deu dang chay muot ma!");
-            } else {
-                Serial.println("[WARNING] PHAT HIEN DEADLOCK HOAC STARVATION!");
-                if (!alive_DriveFSM) Serial.println(" -> Task DriveFSM bi treo!");
-                if (!alive_InputMixer) Serial.println(" -> Task InputMixer bi treo!");
-                if (!alive_Telemetry) Serial.println(" -> Task Telemetry bi treo!");
-            }
-
-            // --- B. Báo cáo Hiệu năng thời gian ---
-            Serial.println("--- Thoi gian thuc thi (Micro-giay) ---");
-            Serial.printf("[Core 1] DriveFSM  (20ms) | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Drive, execTime_Drive);
-            Serial.printf("[Core 1] InputMix  (20ms) | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Input, execTime_Input);
-            Serial.printf("[Core 0] Sensors   (20ms) | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Sensors, execTime_Sensors);
-            Serial.printf("[Core 0] Telemetry (50ms) | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Tele, execTime_Tele);
-            Serial.printf("[Core 0] NetCore  (100ms) | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Net, execTime_Net);
-            Serial.println("===========================================\n");
-
-            // --- C. Reset nhịp tim & Đồng hồ ---
-            alive_DriveFSM = false;
-            alive_InputMixer = false;
-            alive_Telemetry = false;
-            lastPrintTime1 = millis(); // <--- CHỈ RESET 1 LẦN DUY NHẤT Ở CUỐI KHỐI LỆNH
-        }
-
-        // ====================================================================
-        // 2. CỨ MỖI 10 GIÂY, CHỤP TIMELINE TRONG 100ms VÀ IN RA
-        // ====================================================================
-        if (millis() - lastPrintTime2 >= 10000) {
-            traceIndex = 0;
-            doTrace = true;  // Bật hộp đen
-            vTaskDelay(pdMS_TO_TICKS(100)); // Để các Task khác chạy tự do trong 100ms
-            doTrace = false; // Tắt hộp đen
-
-            // In kết quả ra định dạng CSV
-            Serial.println("--- RTOS TIMELINE SNAPSHOT (100ms) ---");
-            Serial.println("Time_us,Task,Event");
-            uint32_t base_time = traceLog[0].time_us; // Lấy mốc 0
-            
-            for(int i = 0; i < traceIndex; i++) {
-                String taskName = "";
-                if(traceLog[i].task_id == 1) taskName = "1_DriveFSM (Pri 4)";
-                if(traceLog[i].task_id == 2) taskName = "2_InputMix (Pri 3)";
-                if(traceLog[i].task_id == 3) taskName = "3_Telemetry (Pri 2)";
-                if(traceLog[i].task_id == 4) taskName = "4_NetCore (Pri 1)";
-                if(traceLog[i].task_id == 5) taskName = "5_Sensors (Pri 3)";
-                
-                String event = traceLog[i].is_start ? "START" : "STOP";
-                uint32_t rel_time = traceLog[i].time_us - base_time;
-                
-                Serial.printf("%lu (us)---,%s,%s\n", rel_time, taskName.c_str(), event.c_str());
-            }
-            Serial.println("--------------------------------------\n");
-            lastPrintTime2 = millis();
-        }
-
-        execTime_Net = micros() - current_cycle_start;
-        
-        // 2. Nhường CPU 100ms để dỗ Watchdog Timer của lõi 0
-        vTaskDelay(pdMS_TO_TICKS(100));
-    }
-}
-
-/**
- * @brief TASK 4: PHÓNG VIÊN BÁO CÁO (Telemetry)
- * @core 0 | Priority 2 | Chu kỳ: 50ms (20Hz)
- */
-void Task_Telemetry(void *pvParameters)
-{
-    TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(50); 
-    
-    uint32_t last_cycle_start = micros(); // Thêm mới
-    TelemetryPacket packet;
-
-    for (;;)
-    {
-        alive_Telemetry = true; // [HEARTBEAT]
-
-        uint32_t current_cycle_start = micros();
-        cycleTime_Tele = current_cycle_start - last_cycle_start;
-        last_cycle_start = current_cycle_start;
-
-        logTrace(3, true); 
-
-        // 1. Lấy gói bưu phẩm "Nóng hổi" nhất từ Task_Sensors
-        // Dùng xQueueReceive (xóa luôn gói trong hàng đợi) thay vì Peek
-        if (xQueueReceive(queue_Telemetry, &packet, 0) == pdPASS) {
-            
-            // 2. Tạo đối tượng JSON
-            JSONVar jsonDoc;
-            jsonDoc["type"] = "tele";
-            jsonDoc["bat"] = (double)packet.batteryVoltage; // Ép kiểu double cho an toàn
-            
-            // Tạo mảng RPM 6 bánh
-            JSONVar rpmArray;
-            for(int i = 0; i < 6; i++) {
-                rpmArray[i] = packet.rpm[i];
-            }
-            jsonDoc["rpm"] = rpmArray;
-            
-            jsonDoc["pwmL"] = packet.pwmLeft;
-            jsonDoc["pwmR"] = packet.pwmRight;
-            jsonDoc["motion"] = (int)packet.motionState;
-            jsonDoc["mode"] = (int)packet.activeMode;
-            jsonDoc["fs"] = packet.isFailsafeLatched;
-
-            // 3. Đóng gói thành chuỗi String và bắn đi qua WebSocket
-            String jsonString = JSON.stringify(jsonDoc);
-            network.broadcastStatus(jsonString);
-            // ---> THÊM DÒNG NÀY: Bắn dữ liệu thô dạng Byte về Tay cầm ESP-NOW <---
-            network.broadcastEspNowTelemetry(packet);
-        }
-        
-        execTime_Tele = micros() - current_cycle_start; // Thêm mới
-        logTrace(3, false); 
-        vTaskDelayUntil(&xLastWakeTime, xFrequency);
-    }
-}
-
-/**
- * @brief TASK 5: TRẠM ĐO LƯỜNG (Sensors Data Logger)
+ * @brief TASK: INPUT (Lọc nhiễu & Tính toán dữ liệu cảm biến)
  * @core 0 | Priority 3 | Chu kỳ: 20ms (50Hz)
  */
-void Task_Sensors(void *pvParameters)
+void Task_Input(void *pvParameters)
 {
     TickType_t xLastWakeTime = xTaskGetTickCount();
     const TickType_t xFrequency = pdMS_TO_TICKS(20);
-    
-    uint32_t last_cycle_start = micros(); // <--- Thêm: Bắt đầu bấm giờ
+    uint32_t last_cycle_start = micros(); 
 
-    DriveStatus dStatus = {0, 0, MOTION_STOP}; 
+    DriveStatus dStatus = {0, 0, MOTION_STOP};
 
-    for (;;)
-    {
-        uint32_t current_cycle_start = micros(); // <--- Thêm: Đo chu kỳ
-        cycleTime_Sensors = current_cycle_start - last_cycle_start;
+    for (;;) {
+        uint32_t current_cycle_start = micros(); 
+        cycleTime_Input = current_cycle_start - last_cycle_start;
         last_cycle_start = current_cycle_start;
+        logTrace(5, true); 
 
-        logTrace(5, true); // [TASK 5 START] 
-
-        // 1. Nhặt dữ liệu động lực học từ Task 2 (Peek hoặc Receive đều được)
+        // 1. Lấy dữ liệu từ QUEUE_DRIVE_STATUS
         xQueueReceive(queue_DriveStatus, &dStatus, 0);
 
-        // 2. Gom tất cả dữ liệu vào "Bưu phẩm" TelemetryPacket
+        // 2. Gom dữ liệu vào TelemetryPacket
         TelemetryPacket packet;
         packet.batteryVoltage = readBatteryVoltage();
-        for(int i = 0; i < 6; i++) {
+        for (int i = 0; i < 6; i++) {
             packet.rpm[i] = calculateRPM(i);
         }
         packet.pwmLeft = dStatus.pwmL;
@@ -380,14 +198,144 @@ void Task_Sensors(void *pvParameters)
         packet.activeMode = inputMgr.getActiveSource();
         packet.isFailsafeLatched = inputMgr.isFailsafeLatched();
 
-        // 3. Đẩy gói bưu phẩm này qua cho Task Mạng phát sóng
-        xQueueOverwrite(queue_Telemetry, &packet);
-        
-        execTime_Sensors = micros() - current_cycle_start; // <--- Thêm: Đo thời gian chạy
+        // 3. Đẩy vào QUEUE_REPORT
+        xQueueOverwrite(queue_Report, &packet);
 
-        logTrace(5, false); // [TASK 5 STOP]
-
+        execTime_Input = micros() - current_cycle_start; 
+        logTrace(5, false); 
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
+
+/**
+ * @brief TASK: REPORT (Giám sát & Báo cáo Mạng)
+ * @core 0 | Priority 2 | Chu kỳ: 50ms (20Hz)
+ */
+void Task_Report(void *pvParameters)
+{
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(50);
+    uint32_t last_cycle_start = micros(); 
+    TelemetryPacket packet;
+
+    for (;;) {
+        alive_Report = true; // [HEARTBEAT]
+
+        uint32_t current_cycle_start = micros();
+        cycleTime_Report = current_cycle_start - last_cycle_start;
+        last_cycle_start = current_cycle_start;
+        logTrace(3, true);
+
+        // 1. Quản lý Mạng
+        network.update(); 
+
+        // 2. Đóng gói & Gửi (Lấy từ QUEUE_REPORT)
+        if (xQueueReceive(queue_Report, &packet, 0) == pdPASS) {
+            JSONVar jsonDoc;
+            jsonDoc["type"] = "tele";
+            jsonDoc["bat"] = (double)packet.batteryVoltage; 
+
+            JSONVar rpmArray;
+            for (int i = 0; i < 6; i++) {
+                rpmArray[i] = packet.rpm[i];
+            }
+            jsonDoc["rpm"] = rpmArray;
+            jsonDoc["pwmL"] = packet.pwmLeft;
+            jsonDoc["pwmR"] = packet.pwmRight;
+            jsonDoc["motion"] = (int)packet.motionState;
+            jsonDoc["mode"] = (int)packet.activeMode;
+            jsonDoc["fs"] = packet.isFailsafeLatched;
+
+            String jsonString = JSON.stringify(jsonDoc);
+            network.broadcastStatus(jsonString);
+            network.broadcastEspNowTelemetry(packet);
+        }
+
+        execTime_Report = micros() - current_cycle_start; 
+        logTrace(3, false);
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    }
+}
+
+/**
+ * @brief TASK: TRẠM GIÁM SÁT RTOS TẠM THỜI (System Monitor / Profiler)
+ * @core 0 | Priority 1 (Thấp nhất) | Chu kỳ: 100ms
+ * @details Thay thế Task_Network cũ để test thời gian chạy các Task.
+ */
+void Task_SystemMonitor(void *pvParameters)
+{
+    uint32_t lastPrintTime1 = millis();
+    uint32_t lastPrintTime2 = millis();
+    uint32_t last_cycle_start = micros();
+
+    for (;;) {
+        uint32_t current_cycle_start = micros();
+        cycleTime_Monitor = current_cycle_start - last_cycle_start;
+        last_cycle_start = current_cycle_start;
+        logTrace(4, true); 
+
+        // ====================================================================
+        // 1. MỖI 2 GIÂY IN BÁO CÁO TỔNG HỢP (DEADLOCK + HIỆU NĂNG) 1 LẦN
+        // ====================================================================
+        if (millis() - lastPrintTime1 >= 2000) {
+            Serial.println("\n=== BÁO CÁO TỔNG HỢP RTOS (TESTING MODE) ===");
+            Serial.print("Trang thai Deadlock: ");
+            if (alive_Control && alive_Command && alive_Report) {
+                Serial.println("[SAFE] Khong phat hien Deadlock. Tat ca cac Task dang chay muot ma!");
+            } else {
+                Serial.println("[WARNING] PHAT HIEN DEADLOCK HOAC STARVATION!");
+                if (!alive_Control) Serial.println(" -> Task Control bi treo!");
+                if (!alive_Command) Serial.println(" -> Task Command bi treo!");
+                if (!alive_Report)  Serial.println(" -> Task Report bi treo!");
+            }
+
+            Serial.println("--- Thoi gian thuc thi (Micro-giay) ---");
+            Serial.printf("[Core 1] Command  (20ms) | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Command, execTime_Command);
+            Serial.printf("[Core 1] Control  (20ms) | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Control, execTime_Control);
+            Serial.printf("[Core 0] Input    (20ms) | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Input, execTime_Input);
+            Serial.printf("[Core 0] Report   (50ms) | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Report, execTime_Report);
+            Serial.printf("[Core 0] Monitor (100ms) | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Monitor, execTime_Monitor);
+            Serial.println("===========================================\n");
+
+            alive_Control = false;
+            alive_Command = false;
+            alive_Report  = false;
+            lastPrintTime1 = millis(); 
+        }
+
+        // ====================================================================
+        // 2. CỨ MỖI 10 GIÂY IN TIMELINE
+        // ====================================================================
+        if (millis() - lastPrintTime2 >= 10000) {
+            traceIndex = 0;
+            doTrace = true;                 
+            vTaskDelay(pdMS_TO_TICKS(100)); 
+            doTrace = false;                
+
+            Serial.println("--- RTOS TIMELINE SNAPSHOT (100ms) ---");
+            Serial.println("Time_us,Task,Event");
+            if (traceIndex > 0) {
+                uint32_t base_time = traceLog[0].time_us; 
+                for (int i = 0; i < traceIndex; i++) {
+                    String taskName = "";
+                    if (traceLog[i].task_id == 1) taskName = "1_Control (Pri 4)";
+                    if (traceLog[i].task_id == 2) taskName = "2_Command (Pri 3)";
+                    if (traceLog[i].task_id == 3) taskName = "3_Report (Pri 2)";
+                    if (traceLog[i].task_id == 4) taskName = "4_Monitor (Pri 1)";
+                    if (traceLog[i].task_id == 5) taskName = "5_Input (Pri 3)";
+
+                    String event = traceLog[i].is_start ? "START" : "STOP";
+                    uint32_t rel_time = traceLog[i].time_us - base_time;
+                    Serial.printf("%lu,%s,%s\n", rel_time, taskName.c_str(), event.c_str());
+                }
+            }
+            Serial.println("--------------------------------------\n");
+            lastPrintTime2 = millis();
+        }
+
+        execTime_Monitor = micros() - current_cycle_start;
+        logTrace(4, false); 
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -400,50 +348,38 @@ void setup()
     Serial.begin(115200);
     Serial.println("--- MARS ROVER INITIALIZING ---");
 
-    // 1. Lắp ráp các thành phần (Dependency Injection)
-    sideLeft.addMotor(&m_L1);
-    sideLeft.addMotor(&m_L2);
-    sideLeft.addMotor(&m_L3);
-    sideRight.addMotor(&m_R1);
-    sideRight.addMotor(&m_R2);
-    sideRight.addMotor(&m_R3);
+    sideLeft.addMotor(&m_L1); sideLeft.addMotor(&m_L2); sideLeft.addMotor(&m_L3);
+    sideRight.addMotor(&m_R1); sideRight.addMotor(&m_R2); sideRight.addMotor(&m_R3);
 
-    // Cài đặt Trim
-    m_L1.setTrim(1.0);
-    m_L2.setTrim(0.9);
-    m_L3.setTrim(1.0);
-    m_R1.setTrim(1.0);
-    m_R2.setTrim(0.92);
-    m_R3.setTrim(1.0);
+    m_L1.setTrim(1.0); m_L2.setTrim(0.9); m_L3.setTrim(1.0);
+    m_R1.setTrim(1.0); m_R2.setTrim(0.92); m_R3.setTrim(1.0);
 
     myRover.setSides(&sideLeft, &sideRight);
 
-    // 2. Khởi động các Dịch vụ
-    //setupSpeedMonitor(); // Bật ngắt Cảm biến Hall
-    inputMgr.begin();    // Khởi động bộ quản lý đầu vào
-    myRover.begin();     // Khởi động các chân PWM/Dir
-    network.begin();     // Khởi động WiFi, WebServer, ESP-NOW
-    //rcService.begin();   // Khởi động cho RC
-    // 3. Khởi tạo RTOS
-    // Hàng đợi chỉ cần độ dài 1 (Zero-latency design)
+    inputMgr.begin(); 
+    myRover.begin();  
+    network.begin();  
+
+    // Khởi tạo hàng đợi với tên mới (Chuẩn theo sơ đồ)
     queue_Cmd = xQueueCreate(1, sizeof(ControlCommand));
-   queue_DriveStatus = xQueueCreate(1, sizeof(DriveStatus)); // <--- Thêm dòng này
-    queue_Telemetry = xQueueCreate(1, sizeof(TelemetryPacket)); // <--- Sửa lại size
+    queue_DriveStatus = xQueueCreate(1, sizeof(DriveStatus));   
+    queue_Report = xQueueCreate(1, sizeof(TelemetryPacket)); // Đã đổi tên thành queue_Report
 
-    // CHẠY TRÊN CORE 1 (CƠ KHÍ)
-    xTaskCreatePinnedToCore(Task_InputMixer, "InputMixer", 4096, NULL, 3, NULL, 1);
-    xTaskCreatePinnedToCore(Task_DriveFSM, "DriveFSM", 4096, NULL, 4, NULL, 1);
+    // CORE 1 (CƠ KHÍ) - Đã đổi tên hàm và tên hiển thị RTOS
+    xTaskCreatePinnedToCore(Task_Command, "Command", 4096, NULL, 3, NULL, 1);
+    xTaskCreatePinnedToCore(Task_Control, "Control", 4096, NULL, 4, NULL, 1);
 
-    // CHẠY TRÊN CORE 0 (MẠNG & ĐO LƯỜNG)
-    xTaskCreatePinnedToCore(Task_NetworkCore, "Network", 8192, NULL, 1, NULL, 0);
-    xTaskCreatePinnedToCore(Task_Telemetry, "Telemetry", 4096, NULL, 2, NULL, 0);
-    xTaskCreatePinnedToCore(Task_Sensors, "Sensors_Rx", 4096, NULL, 3, NULL, 0); // <--- Kích hoạt Task 5
+    // CORE 0 (MẠNG & ĐO LƯỜNG) - Đã đổi tên hàm và tên hiển thị RTOS
+    xTaskCreatePinnedToCore(Task_Input,  "Input",  4096, NULL, 3, NULL, 0); 
+    xTaskCreatePinnedToCore(Task_Report, "Report", 8192, NULL, 2, NULL, 0);
 
+    // TASK TẠM THỜI CHỈ DÙNG ĐỂ TEST THÔNG SỐ (CORE 0)
+    xTaskCreatePinnedToCore(Task_SystemMonitor, "SysMonitor", 4096, NULL, 1, NULL, 0);
+    
     Serial.println("--- SYSTEM READY ---");
 }
 
 void loop()
 {
-    // Xóa task loop mặc định để tiết kiệm tài nguyên
     vTaskDelete(NULL);
 }
