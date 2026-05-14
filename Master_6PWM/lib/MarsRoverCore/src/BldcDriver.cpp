@@ -27,8 +27,14 @@ void BldcDriver::begin() {
 void BldcDriver::setThrottle(int pwm) {
     // Nhận PWM với hệ số Trim trước khi xuất ra
     //Ví dụ: Lệnh 200, trim 0.9 -> chỉ xuất 180
-    int adjustedPwm = pwm * _trim;
-    int finalPwm = 255 - abs(adjustedPwm); // Logic ngược cho NPN
+    //int adjustedPwm = pwm * _trim;
+    
+    int adjustedPwm = pwm;
+    
+    //int finalPwm = 255 - abs(adjustedPwm); // Logic ngược cho NPN
+    
+    int finalPwm = 0;
+    
     finalPwm = constrain(finalPwm, 0, 255); 
     ledcWrite(_channel, finalPwm);
 }

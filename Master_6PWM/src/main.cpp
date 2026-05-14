@@ -172,12 +172,12 @@ void Task_Control(void *pvParameters)
 
 /**
  * @brief TASK: INPUT (Lọc nhiễu & Tính toán dữ liệu cảm biến)
- * @core 0 | Priority 3 | Chu kỳ: 20ms (50Hz)
+ * @core 0 | Priority 3 | Chu kỳ: 50ms (20Hz)
  */
 void Task_Input(void *pvParameters)
 {
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(20);
+    const TickType_t xFrequency = pdMS_TO_TICKS(50);
     uint32_t last_cycle_start = micros();
 
     DriveStatus dStatus = {0, 0, MOTION_STOP};
@@ -216,12 +216,12 @@ void Task_Input(void *pvParameters)
 
 /**
  * @brief TASK: REPORT (Giám sát & Báo cáo Mạng)
- * @core 0 | Priority 2 | Chu kỳ: 50ms (20Hz)
+ * @core 0 | Priority 2 | Chu kỳ: 100ms (10Hz)
  */
 void Task_Report(void *pvParameters)
 {
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(50);
+    const TickType_t xFrequency = pdMS_TO_TICKS(100);
     uint32_t last_cycle_start = micros();
     TelemetryPacket packet;
 
