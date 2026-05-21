@@ -42,7 +42,7 @@ public:
     void broadcastStatus(String status);
 
     // THÊM HÀM NÀY ĐỂ BẮN ESP-NOW VỀ TAY CẦM
-    void broadcastEspNowTelemetry(TelemetryPacket packet);
+    void broadcastEspNowReport(ReportPacket packet);
     
 private:
     // Các hàm thiết lập nội bộ

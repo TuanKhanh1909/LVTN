@@ -6,8 +6,8 @@
 #include <Arduino.h>
 
 // --- CẤU HÌNH CHÂN ---
-#define RC_CH1_PIN  22  // Kênh 1: Ga (Steering)
-#define RC_CH2_PIN  21  // Kênh 2: Lái (Throttle)
+#define RC_CH1_PIN  36  // Kênh 1: Ga (Steering)
+#define RC_CH2_PIN  39  // Kênh 2: Lái (Throttle)
 
 // --- BIẾN LƯU TRỮ (Volatile để dùng trong ngắt) ---
 volatile unsigned long pwm_start_ch1 = 0;

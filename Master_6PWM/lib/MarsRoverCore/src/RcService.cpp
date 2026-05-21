@@ -41,6 +41,7 @@ void RcService::update() {
     lastThrTime = _startThr;
     interrupts();
 
+    
     // BÍ KÍP Ở ĐÂY: Nếu quá 200ms (200,000 micro-giây) mà chân RC không nháy lên HIGH lần nào
     // -> Tay cầm RC đã tắt hoặc chưa cắm điện -> KHÔNG BƠM DỮ LIỆU RÁC VÀO NỮA!
     if (micros() - lastThrTime > 200000) {

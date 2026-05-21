@@ -11,4 +11,6 @@ bool isRoverCompletelyStopped();
 int16_t calculateRPM(int motorID);
 float readBatteryVoltage();
 
+int32_t getRawPulse(int motorID); // Hàm mới dùng để debug
+
 #endif

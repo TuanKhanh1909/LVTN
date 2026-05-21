@@ -23,9 +23,9 @@ void RoverSide::setSpeed(float speed) {
     
     // Xử lý đảo chiều logic (nếu lắp động cơ bị ngược dây)
     if (_reverseLogic) { 
-        digitalWrite(_dirPin, wantReverse ? HIGH : LOW); 
+        digitalWrite(_dirPin, wantReverse ? LOW : HIGH); 
     } else {
-        digitalWrite(_dirPin, wantReverse ? LOW : HIGH);
+        digitalWrite(_dirPin, wantReverse ? HIGH : LOW);
     }
 
     // 2. Xử lý Tốc độ & Phanh

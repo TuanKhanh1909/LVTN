@@ -29,13 +29,13 @@
 BldcDriver m_L1(27, 0);
 BldcDriver m_L2(14, 1);
 BldcDriver m_L3(13, 2);
-RoverSide sideLeft(23, 22, true);
+RoverSide sideLeft(22, 23, false);
 
 // --- CỤM BÊN PHẢI (RIGHT SIDE) ---
 BldcDriver m_R1(17, 3);
 BldcDriver m_R2(16, 4);
 BldcDriver m_R3(5, 5);
-RoverSide sideRight(18, 19, true);
+RoverSide sideRight(19, 18, false);
 
 /* --- ĐỐI TƯỢNG LOGIC HỆ THỐNG --- */
 Rover myRover;
@@ -180,7 +180,7 @@ void Task_Input(void *pvParameters)
     const TickType_t xFrequency = pdMS_TO_TICKS(50);
     uint32_t last_cycle_start = micros();
 
-    DriveStatus dStatus = {0, 0, MOTION_STOP};
+    DriveStatus dStatus = {0, 0, MOTION_IDLE};
 
     for (;;)
     {
@@ -193,7 +193,7 @@ void Task_Input(void *pvParameters)
         xQueueReceive(queue_DriveStatus, &dStatus, 0);
 
         // 2. Gom dữ liệu vào TelemetryPacket
-        TelemetryPacket packet;
+        ReportPacket packet;
         packet.batteryVoltage = readBatteryVoltage();
         for (int i = 0; i < 6; i++)
         {
@@ -223,7 +223,7 @@ void Task_Report(void *pvParameters)
     TickType_t xLastWakeTime = xTaskGetTickCount();
     const TickType_t xFrequency = pdMS_TO_TICKS(100);
     uint32_t last_cycle_start = micros();
-    TelemetryPacket packet;
+    ReportPacket packet;
 
     for (;;)
     {
@@ -258,7 +258,7 @@ void Task_Report(void *pvParameters)
 
             String jsonString = JSON.stringify(jsonDoc);
             network.broadcastStatus(jsonString);
-            network.broadcastEspNowTelemetry(packet);
+            network.broadcastEspNowReport(packet);
         }
 
         execTime_Report = micros() - current_cycle_start;
@@ -308,18 +308,26 @@ void Task_SystemMonitor(void *pvParameters)
             }
 
             Serial.println("--- Thoi gian thuc thi (Micro-giay) ---");
-            Serial.printf("[Core 1] Command  (20ms) | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Command, execTime_Command);
-            Serial.printf("[Core 1] Control  (20ms) | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Control, execTime_Control);
-            Serial.printf("[Core 0] Input    (20ms) | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Input, execTime_Input);
-            Serial.printf("[Core 0] Report   (50ms) | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Report, execTime_Report);
-            Serial.printf("[Core 0] Monitor (100ms) | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Monitor, execTime_Monitor);
+            Serial.printf("[Core 1] Command  (20ms)  | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Command, execTime_Command);
+            Serial.printf("[Core 1] Control  (20ms)  | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Control, execTime_Control);
+            Serial.printf("[Core 0] Input    (50ms)  | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Input, execTime_Input);
+            Serial.printf("[Core 0] Report   (100ms) | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Report, execTime_Report);
+            Serial.printf("[Core 0] Monitor (100ms)  | Chu ky: %lu us | Thuc thi: %lu us\n", cycleTime_Monitor, execTime_Monitor);
             Serial.println("===========================================\n");
 
             alive_Control = false;
             alive_Command = false;
             alive_Report = false;
+
+            // IN SỐ XUNG THÔ ĐỂ BẮT BỆNH
+            Serial.println("\n=== DEBUG HALL SENSOR (RAW PULSES) ===");
+            Serial.printf("Trai: L1(%d), L2(%d), L3(%d)\n", getRawPulse(0), getRawPulse(1), getRawPulse(2));
+            Serial.printf("Phai: R1(%d), R2(%d), R3(%d)\n", getRawPulse(3), getRawPulse(4), getRawPulse(5));
+            Serial.println("======================================\n");
+            
             lastPrintTime1 = millis();
         }
+        
 
         // ====================================================================
         // 2. CỨ MỖI 10 GIÂY IN TIMELINE
@@ -340,19 +348,19 @@ void Task_SystemMonitor(void *pvParameters)
                 {
                     String taskName = "";
                     if (traceLog[i].task_id == 1)
-                        taskName = "1_Control (Pri 4)";
+                        taskName = "Control (Pri 4)";
                     if (traceLog[i].task_id == 2)
-                        taskName = "2_Command (Pri 3)";
+                        taskName = "Command (Pri 3)";
                     if (traceLog[i].task_id == 3)
-                        taskName = "3_Report (Pri 2)";
+                        taskName = "Report (Pri 1)";
                     if (traceLog[i].task_id == 4)
-                        taskName = "4_Monitor (Pri 1)";
+                        taskName = "(task chạy test)Monitor (Pri 0)";
                     if (traceLog[i].task_id == 5)
-                        taskName = "5_Input (Pri 3)";
+                        taskName = "Input (Pri 2)";
 
                     String event = traceLog[i].is_start ? "START" : "STOP";
                     uint32_t rel_time = traceLog[i].time_us - base_time;
-                    Serial.printf("%lu,%s,%s\n", rel_time, taskName.c_str(), event.c_str());
+                    Serial.printf("%lu,---%s,---%s\n", rel_time, taskName.c_str(), event.c_str());
                 }
             }
             Serial.println("--------------------------------------\n");
@@ -393,22 +401,23 @@ void setup()
     inputMgr.begin();
     myRover.begin();
     network.begin();
-
+    rcService.begin();
+    setupSpeedMonitor();
     // Khởi tạo hàng đợi với tên mới (Chuẩn theo sơ đồ)
     queue_Cmd = xQueueCreate(1, sizeof(ControlCommand));
     queue_DriveStatus = xQueueCreate(1, sizeof(DriveStatus));
-    queue_Report = xQueueCreate(1, sizeof(TelemetryPacket)); // Đã đổi tên thành queue_Report
+    queue_Report = xQueueCreate(1, sizeof(ReportPacket)); // Đã đổi tên thành queue_Report
 
     // CORE 1 (CƠ KHÍ) - Đã đổi tên hàm và tên hiển thị RTOS
     xTaskCreatePinnedToCore(Task_Command, "Command", 4096, NULL, 3, NULL, 1);
     xTaskCreatePinnedToCore(Task_Control, "Control", 4096, NULL, 4, NULL, 1);
 
     // CORE 0 (MẠNG & ĐO LƯỜNG) - Đã đổi tên hàm và tên hiển thị RTOS
-    xTaskCreatePinnedToCore(Task_Input, "Input", 4096, NULL, 3, NULL, 0);
-    xTaskCreatePinnedToCore(Task_Report, "Report", 8192, NULL, 2, NULL, 0);
+    xTaskCreatePinnedToCore(Task_Input, "Input", 4096, NULL, 2, NULL, 0);
+    xTaskCreatePinnedToCore(Task_Report, "Report", 8192, NULL, 1, NULL, 0);
 
     // TASK TẠM THỜI CHỈ DÙNG ĐỂ TEST THÔNG SỐ (CORE 0)
-    xTaskCreatePinnedToCore(Task_SystemMonitor, "SysMonitor", 4096, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(Task_SystemMonitor, "SysMonitor", 4096, NULL, 0, NULL, 0);
 
     Serial.println("--- SYSTEM READY ---");
 }

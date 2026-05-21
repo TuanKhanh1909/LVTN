@@ -1,24 +1,17 @@
 #include "Rover.h"
 
-// --- THỜI GIAN BẢO VỆ PHANH ---
-// Vẫn giữ Timeout 2s làm phao cứu sinh lỡ đứt dây cảm biến Hall
-const unsigned long BRAKE_TIMEOUT = 2000;
-const unsigned long CONFIRM_STOP_TIME = 200; // Phải đứng im liên tục 200ms mới cho đảo chiều
-
-// --- CÁC THÔNG SỐ CỐ ĐỊNH KHI CUA/LÙI ---
-const int PWM_FIXED_REVERSE = -180; // Thêm dấu (-) để mạch hiểu là chiều Lùi
-const int PWM_ASSIST_FWD = 100;
-const int PWM_TURN_FWD = 110;
-const int PWM_ASSIST_BCK = 85;
-
 Rover::Rover()
 {
-    _currentMotion = MOTION_STOP;
-    _nextMotionPending = MOTION_STOP;
-    _isBraking = false;
+    _currentState = MOTION_IDLE;
+    _desireState = MOTION_IDLE;
+    _nextMotionPending = MOTION_IDLE;
+    _brakeStartTime = 0;
     _zeroDetectTime = 0;
-    _currentSpeedL = 0;
-    _currentSpeedR = 0;
+    _actualSpeedL = 0;
+    _actualSpeedR = 0;
+
+    _currentPWM_L = 0;
+    _currentPWM_R = 0;
 }
 
 void Rover::setSides(RoverSide *left, RoverSide *right)
@@ -33,176 +26,159 @@ void Rover::begin()
     _rightSide->begin();
 }
 
+int Rover::getDirection(uint16_t pulse){
+    if (pulse > 1520)
+        return 1;
+    else if (pulse < 1480)
+        return -1;
+    return 0;
+}
+MotionType Rover::determineDesiredState(uint16_t pL, uint16_t pR){
+    int dirL = getDirection(pL);
+    int dirR = getDirection(pR);
+
+    if (dirL == 0 && dirR == 0) return MOTION_IDLE;
+    if (dirL == 1 && dirR == 1) return MOTION_FORWARD;
+    if (dirL == -1 && dirR == -1) return MOTION_BACKWARD;
+    if (dirL == -1 && dirR == 1) return MOTION_SPIN_LEFT;
+    if (dirL == 1 && dirR == -1) return MOTION_SPIN_RIGHT;
+    if (dirL == 0 && dirR == 1) return MOTION_FWD_LEFT;
+    if (dirL == 1 && dirR == 0) return MOTION_FWD_RIGHT;
+    if (dirL == 0 && dirR == -1) return MOTION_BCK_LEFT;
+    if (dirL == -1 && dirR == 0) return MOTION_BCK_RIGHT;
+    return MOTION_IDLE;
+}
+
+int Rover::mapPulseToPWM(uint16_t pulse){
+    int pwm = 0;
+    if (pulse > 1520)
+        pwm = map(pulse, 1520, 2000, MIN_PWM_START, 255);
+    else if (pulse < 1480)
+        pwm = PWM_FIXED_REVERSE;
+    return constrain(pwm, 0, 255);
+}
+
+void Rover::applyDriveControl(int pwmL, int pwmR, bool dirL_isFwd, bool dirR_isFwd, bool doBrake){
+    // Cập nhật biến để in lên Web
+    _actualSpeedL = doBrake ? 0 : pwmL;
+    _actualSpeedR = doBrake ? 0 : pwmR;
+    
+    // Xử lý truyền lệnh xuống RoverSide
+    if (doBrake) {
+        _leftSide->brake();
+        _rightSide->brake();
+    } else {
+        // Hàm setSpeed chỉ nhận 1 số: Tiến thì truyền số dương, Lùi thì truyền số âm
+        _leftSide->setSpeed(dirL_isFwd ? pwmL : -pwmL);
+        _rightSide->setSpeed(dirR_isFwd ? pwmR : -pwmR);
+    }
+}
+
+//THUẬT TOÁN SOFT-START
+void Rover::processSoftStart(int targetL, int targetR) {
+    if (_currentPWM_L < targetL) {
+        _currentPWM_L += RAMP_STEP;
+        if (_currentPWM_L > targetL) _currentPWM_L = targetL;
+    } else if (_currentPWM_L > targetL) {
+        _currentPWM_L -= RAMP_STEP;
+        if (_currentPWM_L < targetL) _currentPWM_L = targetL;
+    }
+
+    if (_currentPWM_R < targetR) {
+        _currentPWM_R += RAMP_STEP;
+        if (_currentPWM_R > targetR) _currentPWM_R = targetR;
+    } else if (_currentPWM_R > targetR) {
+        _currentPWM_R -= RAMP_STEP;
+        if (_currentPWM_R < targetR) _currentPWM_R = targetR;
+    }
+}
 void Rover::update(ControlCommand cmd)
 {
     if (!cmd.connected)
     {
-        _leftSide->brake();
-        _rightSide->brake();
-        _currentSpeedL = 0;
-        _currentSpeedR = 0;
-        _currentMotion = MOTION_STOP;
-        _isBraking = false;
+        applyDriveControl(0, 0, true, true, true);
+        _currentState = MOTION_IDLE;
+        _currentPWM_L = 0;
+        _currentPWM_R = 0; //Reset soft-start
         return;
     }
 
-    // ====================================================================
-    // 1. PHÂN LOẠI LỆNH TỪ JOYSTICK
-    // ====================================================================
-    int dirL = 0, dirR = 0;
-    if (cmd.pulseL > 1520)
-        dirL = 1;
-    else if (cmd.pulseL < 1480)
-        dirL = -1;
-    if (cmd.pulseR > 1520)
-        dirR = 1;
-    else if (cmd.pulseR < 1480)
-        dirR = -1;
+    _desireState = determineDesiredState(cmd.pulseL, cmd.pulseR);
+    // Kịch bản xe đang phanh cứng chờ RPM = 0
+    if (_currentState == MOTION_BRAKING) {
+        float max_rpm_system = 0;
+        for(int i=0; i<6; i++) {
+            max_rpm_system = max(max_rpm_system, abs((float)calculateRPM(i)));
+        }
 
-    MotionType desireState = MOTION_STOP;
-    if (dirL == 1 && dirR == 1)
-        desireState = MOTION_FORWARD;
-    else if (dirL == -1 && dirR == -1)
-        desireState = MOTION_BACKWARD;
-    else if (dirL == -1 && dirR == 1)
-        desireState = MOTION_SPIN_LEFT;
-    else if (dirL == 1 && dirR == -1)
-        desireState = MOTION_SPIN_RIGHT;
-    else if (dirL == 0 && dirR == 1)
-        desireState = MOTION_FWD_LEFT;
-    else if (dirL == 1 && dirR == 0)
-        desireState = MOTION_FWD_RIGHT;
-    else if (dirL == 0 && dirR == -1)
-        desireState = MOTION_BCK_LEFT;
-    else if (dirL == -1 && dirR == 0)
-        desireState = MOTION_BCK_RIGHT;
-
-    // ====================================================================
-    // 2. MÁY TRẠNG THÁI BẢO VỆ ĐẢO CHIỀU (DỰA VÀO RPM = 0)
-    // ====================================================================
-    if (_isBraking)
-    {
         bool isReadyToSwitch = false;
-
-        // Điều kiện 1: Đợi RPM = 0 (Điều kiện chính xác nhất)
-        if (!isRoverCompletelyStopped())
-        {
+        if (max_rpm_system > RPM_SAFE_ZERO) {
             _zeroDetectTime = 0;
-        }
-        else
-        {
-            // Xác nhận đứng im liên tục trong 200ms
-            if (_zeroDetectTime == 0)
-                _zeroDetectTime = millis();
-            else if (millis() - _zeroDetectTime > CONFIRM_STOP_TIME)
-                isReadyToSwitch = true;
+        } else {
+            if (_zeroDetectTime == 0) _zeroDetectTime = millis();
+            else if (millis() - _zeroDetectTime > CONFIRM_STOP_TIME) isReadyToSwitch = true;
         }
 
-        // Điều kiện 2: Phao cứu sinh Timeout (Lỡ cảm biến hỏng)
-        if (millis() - _brakeStartTime > BRAKE_TIMEOUT)
-            isReadyToSwitch = true;
+        if (millis() - _brakeStartTime > BRAKE_TIMEOUT) isReadyToSwitch = true;
 
-        if (isReadyToSwitch)
-        {
-            _currentMotion = _nextMotionPending; // Nhả phanh, sang trạng thái mới
-            _isBraking = false;
-            _currentSpeedL = 0;
-            _currentSpeedR = 0;
+        if (isReadyToSwitch) {
+            _currentState = _nextMotionPending;
             _zeroDetectTime = 0;
+            _currentPWM_L = 0;
+            _currentPWM_R = 0; 
+        } else {
+            applyDriveControl(0, 0, true, true, true);
         }
-        else
-        {
-            _leftSide->brake();
-            _rightSide->brake();
-        }
-        return; // Đang phanh thì không cấp ga
-    }
-    else
-    {
-        // Nếu phát hiện đổi trạng thái -> Kích hoạt Phanh ngay lập tức
-        if (desireState != _currentMotion)
-        {
-            _isBraking = true;
-            _nextMotionPending = desireState;
+        return;
+    } 
+    else {
+        // Đảo chiều đột ngột -> Đạp phanh ngay
+        if (_desireState != _currentState) {
+            _currentState = MOTION_BRAKING;
+            _nextMotionPending = _desireState;
             _brakeStartTime = millis();
-            _leftSide->brake();
-            _rightSide->brake();
-            _currentSpeedL = 0;
-            _currentSpeedR = 0;
+            applyDriveControl(0, 0, true, true, true);
+            _currentPWM_L = 0;
+            _currentPWM_R = 0;
             return;
         }
     }
 
-    // ====================================================================
-    // 3. TÍNH TOÁN TARGET PWM TỨC THỜI (KHÔNG CÓ ĐỘ TRỄ)
-    // ====================================================================
-    int target_L = 0;
-    int target_R = 0;
+    // TÍNH TOÁN TARGET PWM TỨC THỜI (Bơm thẳng, không qua Soft-Start)
+    int target_L = 0, target_R = 0;
+    int joystick_L = mapPulseToPWM(cmd.pulseL);
+    int joystick_R = mapPulseToPWM(cmd.pulseR);
 
-    // THẦY FIX NHẸ: Bọc hàm constrain để lỡ pulse có vọt lên 2100 thì ngõ ra vẫn max 255 (Chống tràn số)
-    int joystick_L = constrain(map(cmd.pulseL, 1520, 2000, 0, 255), 0, 255);
-    int joystick_R = constrain(map(cmd.pulseR, 1520, 2000, 0, 255), 0, 255);
-
-    switch (_currentMotion)
-    {
-    case MOTION_STOP:
-        target_L = 0;
-        target_R = 0;
-        break;
-    case MOTION_FORWARD:
-        target_L = joystick_L;
-        target_R = joystick_R;
-        break;
-    case MOTION_BACKWARD:
-        target_L = PWM_FIXED_REVERSE;
-        target_R = PWM_FIXED_REVERSE;
-        break;
-    case MOTION_SPIN_LEFT:
-        target_L = PWM_FIXED_REVERSE;
-        target_R = PWM_ASSIST_FWD;
-        break;
-    case MOTION_SPIN_RIGHT:
-        target_L = PWM_ASSIST_FWD;
-        target_R = PWM_FIXED_REVERSE;
-        break;
-    case MOTION_FWD_LEFT:
-        target_L = PWM_FIXED_REVERSE;
-        target_R = PWM_TURN_FWD;
-        break;
-    case MOTION_FWD_RIGHT:
-        target_L = PWM_TURN_FWD;
-        target_R = PWM_FIXED_REVERSE;
-        break;
-    case MOTION_BCK_LEFT:
-        target_L = PWM_ASSIST_BCK;
-        target_R = PWM_FIXED_REVERSE;
-        break;
-    case MOTION_BCK_RIGHT:
-        target_L = PWM_FIXED_REVERSE;
-        target_R = PWM_ASSIST_BCK;
-        break;
+    switch (_currentState) {
+        case MOTION_IDLE: target_L = 0; target_R = 0; break;
+        case MOTION_FORWARD: target_L = joystick_L; target_R = joystick_R; break;
+        case MOTION_BACKWARD: target_L = PWM_FIXED_REVERSE; target_R = PWM_FIXED_REVERSE; break;
+        case MOTION_SPIN_LEFT: target_L = PWM_FIXED_REVERSE; target_R = PWM_ASSIST_FWD; break;
+        case MOTION_SPIN_RIGHT: target_L = PWM_ASSIST_FWD; target_R = PWM_FIXED_REVERSE; break;
+        case MOTION_FWD_LEFT: target_L = PWM_FIXED_REVERSE; target_R = PWM_TURN_FWD; break;
+        case MOTION_FWD_RIGHT: target_L = PWM_TURN_FWD; target_R = PWM_FIXED_REVERSE; break;
+        case MOTION_BCK_LEFT: target_L = PWM_ASSIST_BCK; target_R = PWM_FIXED_REVERSE; break;
+        case MOTION_BCK_RIGHT: target_L = PWM_FIXED_REVERSE; target_R = PWM_ASSIST_BCK; break;
+        default: target_L = 0; target_R = 0; break;
     }
+    // GỌI SOFT-START: Kéo _currentPWM tiến dần về target
+    processSoftStart(target_L, target_R);
+    
+    // Lấy giá trị sau khi đã vuốt mềm để xuất ra phần cứng
+    int out_L = (int)_currentPWM_L;
+    int out_R = (int)_currentPWM_R;
 
-    // Gán trực tiếp (Loại bỏ hoàn toàn RAMP_STEP)
-    _currentSpeedL = target_L;
-    _currentSpeedR = target_R;
-
-    // ====================================================================
-    // 4. XUẤT TÍN HIỆU RA MOTOR
-    // ====================================================================
-    if (_currentMotion == MOTION_STOP)
-    {
-        _leftSide->brake();
-        _rightSide->brake();
+    // XUẤT LỆNH RA MOTOR DRIVER NGAY LẬP TỨC
+    switch (_currentState) {
+        case MOTION_IDLE: applyDriveControl(out_L, out_R, true, true, true); break;
+        case MOTION_FORWARD: applyDriveControl(out_L, out_R, true, true, false); break;
+        case MOTION_BACKWARD: applyDriveControl(out_L, out_R, false, false, false); break;
+        case MOTION_SPIN_LEFT: applyDriveControl(out_L, out_R, false, true, false); break;
+        case MOTION_SPIN_RIGHT: applyDriveControl(out_L, out_R, true, false, false); break;
+        case MOTION_FWD_LEFT: applyDriveControl(out_L, out_R, false, true, false); break;
+        case MOTION_FWD_RIGHT: applyDriveControl(out_L, out_R, true, false, false); break;
+        case MOTION_BCK_LEFT: applyDriveControl(out_L, out_R, true, false, false); break;
+        case MOTION_BCK_RIGHT: applyDriveControl(out_L, out_R, false, true, false); break;
+        default: applyDriveControl(0, 0, true, true, true); break;
     }
-    else
-    {
-        _leftSide->setSpeed(_currentSpeedL);
-        _rightSide->setSpeed(_currentSpeedR);
-    }
-}
-
-MotionType Rover::getMotionType()
-{
-    return _currentMotion;
 }

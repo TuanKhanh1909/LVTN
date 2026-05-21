@@ -233,10 +233,10 @@ void NetworkService::onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *cli
     }
 }
 
-void NetworkService::broadcastEspNowTelemetry(TelemetryPacket packet) {
+void NetworkService::broadcastEspNowReport(ReportPacket packet) {
     // Chỉ gửi khi WiFi đang bật và đã bắt được MAC của tay cầm
     if (_isWiFiOn && _hasRemoteMac) {
         // Ép kiểu gói bưu phẩm TelemetryPacket thành mảng Byte và bắn đi
-        esp_now_send(_remoteMac, (uint8_t *)&packet, sizeof(TelemetryPacket));
+        esp_now_send(_remoteMac, (uint8_t *)&packet, sizeof(ReportPacket));
     }
 }

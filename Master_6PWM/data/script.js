@@ -148,10 +148,8 @@ function onMessage(event) {
                     case 2: modeText = "⬇️ BACKWARD"; break;
                     case 3: modeText = "↖️ FWD LEFT"; break;
                     case 4: modeText = "↗️ FWD RIGHT"; break;
-                    case 5: modeText = "↙️ BCK LEFT"; break;
-                    case 6: modeText = "↘️ BCK RIGHT"; break;
-                    case 7: modeText = "🔄 SPIN LEFT"; break;
-                    case 8: modeText = "🔄 SPIN RIGHT"; break;
+                    case 5: modeText = "🔄 SPIN LEFT"; break;
+                    case 6: modeText = "🔄 SPIN RIGHT"; break;
                 }
                 document.getElementById('modeDisplay').textContent = modeText;
             

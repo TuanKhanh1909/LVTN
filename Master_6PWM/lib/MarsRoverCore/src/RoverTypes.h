@@ -35,16 +35,18 @@ enum RoverState {
 
 // --- TRẠNG THÁI HIỂN THỊ (DISPLAY STATE) ---
 // Dùng để hiển thị lên LCD hoặc Web cho người dùng biết xe đang làm gì
-enum MotionType {
-    MOTION_STOP,
-    MOTION_FORWARD,     // Tiến thẳng
-    MOTION_BACKWARD,    // Lùi thẳng
-    MOTION_FWD_LEFT,    // Tiến + Rẽ trái
-    MOTION_FWD_RIGHT,   // Tiến + Rẽ phải
-    MOTION_BCK_LEFT,    // Lùi + Rẽ trái
-    MOTION_BCK_RIGHT,   // Lùi + Rẽ phải
-    MOTION_SPIN_LEFT,   // Xoay trái tại chỗ
-    MOTION_SPIN_RIGHT   // Xoay phải tại chỗ
+enum MotionType
+{
+    MOTION_IDLE,       // 0: Phanh đứng yên
+    MOTION_FORWARD,    // 1: Tiến thẳng
+    MOTION_BACKWARD,   // 2: Lùi thẳng
+    MOTION_FWD_LEFT,   // 3: Tiến + Rẽ trái
+    MOTION_FWD_RIGHT,  // 4: Tiến + Rẽ phải
+    MOTION_SPIN_LEFT,  // 5: Xoay trái tại chỗ
+    MOTION_SPIN_RIGHT, // 6: Xoay phải tại chỗ
+    MOTION_BCK_LEFT,   // 7: Lùi + Rẻ trái
+    MOTION_BCK_RIGHT,  // 8: Lùi + Rẻ phải
+    MOTION_BRAKING     // 9: Trạng thái phanh an toàn
 };
 // --- TRẠNG THÁI TỪ CƠ KHÍ GỬI LÊN (NỘI BỘ) ---
 struct DriveStatus {
@@ -54,7 +56,7 @@ struct DriveStatus {
 };
 
 // --- GÓI TIN ĐO LƯỜNG TỔNG HỢP (TELEMETRY) ---
-struct TelemetryPacket {
+struct ReportPacket {
     float batteryVoltage;    
     int16_t rpm[6];          // [L1, L2, L3, R1, R2, R3]
     int16_t pwmLeft;         
