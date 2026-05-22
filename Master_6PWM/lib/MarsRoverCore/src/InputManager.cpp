@@ -4,10 +4,10 @@ InputManager::InputManager()
 {
     _activeSource = SOURCE_NONE;
     _targetMode = SOURCE_NONE; // Khởi động lên MẶC ĐỊNH là RC
-   
-   // Bắt buộc người dùng phải vào Web để mở khóa
+
+    // Bắt buộc người dùng phải vào Web để mở khóa
     _isFailsafeLatched = true;
-   
+
     // Giá trị an toàn mặc định (1500 = Đứng yên)
     _dataRC = {1500, 1500, false};
     _dataEspNow = {1500, 1500, false};
@@ -27,9 +27,10 @@ void InputManager::setControlMode(InputSource mode)
     _targetMode = mode;
 
     // BÍ KÍP ADMIN: Cứ mỗi lần Web chọn lại chế độ -> Xóa cờ Failsafe (Mở khóa xe)
-    if (_isFailsafeLatched) {
+    if (_isFailsafeLatched)
+    {
         Serial.println("[ADMIN] Da xac nhan an toan! MO KHOA FAILSAFE!");
-        _isFailsafeLatched = false; 
+        _isFailsafeLatched = false;
     }
     _lastTimeWeb = millis();
     _lastTimeRC = millis();
@@ -201,38 +202,44 @@ void InputManager::updateRC(uint16_t Throttle, uint16_t Steering)
     _lastTimeRC = millis();
 }
 
-bool InputManager::isSourceValid(unsigned long lastTime,unsigned long timeoutMs)
+bool InputManager::isSourceValid(unsigned long lastTime, unsigned long timeoutMs)
 {
     // Kiểm tra xem tín hiệu có còn mới không (trong vòng 200 miligiây)
     return (millis() - lastTime < timeoutMs);
 }
 
-ControlCommand InputManager::getCommand()   
+ControlCommand InputManager::getCommand()
 {
     ControlCommand finalCmd = {1500, 1500, false};
-    
+
     _activeSource = SOURCE_NONE;
 
     // -----------------------------------------------------------------
     // TẦNG 1: BẢO VỆ TỐI CAO (LATCHED FAILSAFE)
     // Nếu cờ này đã bật, từ chối mọi tín hiệu cho đến khi Admin mở khóa
     // -----------------------------------------------------------------
-    if (_isFailsafeLatched) {
-        return finalCmd; 
+    if (_isFailsafeLatched)
+    {
+        return finalCmd;
     }
 
     // -----------------------------------------------------------------
     // TẦNG 2: KIỂM TRA NGUỒN ĐANG ĐƯỢC CHỌN (MUTEX CONTROL)
     // -----------------------------------------------------------------
-    
+
     // ---> KỊCH BẢN A: ADMIN CHO PHÉP WEB LÁI
-    if (_targetMode == SOURCE_WEB) {
-        if (_dataWeb.connected) { 
+    if (_targetMode == SOURCE_WEB)
+    {
+        if (_dataWeb.connected)
+        {
             // FIX: Cho phép WiFi lag tối đa 1000ms (1 giây)
-            if (isSourceValid(_lastTimeWeb, 1000)) { 
+            if (isSourceValid(_lastTimeWeb, 1000))
+            {
                 _activeSource = SOURCE_WEB;
                 return _dataWeb;
-            } else {
+            }
+            else
+            {
                 Serial.println("[FAILSAFE] Mat song WEB! KHOA CUNG HE THONG!");
                 _isFailsafeLatched = true;
             }
@@ -240,13 +247,18 @@ ControlCommand InputManager::getCommand()
     }
 
     // ---> KỊCH BẢN B: ADMIN CHO PHÉP ESP-NOW LÁI
-    else if (_targetMode == SOURCE_ESP_NOW) {
-        if (_dataEspNow.connected) {
+    else if (_targetMode == SOURCE_ESP_NOW)
+    {
+        if (_dataEspNow.connected)
+        {
             // FIX: Cho phép sóng ESP-NOW lag tối đa 1000ms
-            if (isSourceValid(_lastTimeEspNow, 1000)) {
+            if (isSourceValid(_lastTimeEspNow, 1000))
+            {
                 _activeSource = SOURCE_ESP_NOW;
                 return _dataEspNow;
-            } else {
+            }
+            else
+            {
                 Serial.println("[FAILSAFE] Mat song ESP-NOW! KHOA CUNG HE THONG!");
                 _isFailsafeLatched = true;
             }
@@ -254,13 +266,18 @@ ControlCommand InputManager::getCommand()
     }
 
     // ---> KỊCH BẢN C: ADMIN CHO PHÉP RC LÁI (HOẶC VỪA KHỞI ĐỘNG LÊN)
-    else if (_targetMode == SOURCE_RC) {
-        if (_dataRC.connected) {
+    else if (_targetMode == SOURCE_RC)
+    {
+        if (_dataRC.connected)
+        {
             // GIỮ NGUYÊN: RC vật lý bắt buộc phải nhanh, 200ms là chốt khóa!
-            if (isSourceValid(_lastTimeRC, 200)) {
+            if (isSourceValid(_lastTimeRC, 200))
+            {
                 _activeSource = SOURCE_RC;
                 return _dataRC;
-            } else {
+            }
+            else
+            {
                 Serial.println("[FAILSAFE] Mat song Tay cam RC! KHOA CUNG HE THONG!");
                 _isFailsafeLatched = true;
             }
