@@ -324,10 +324,9 @@ void Task_SystemMonitor(void *pvParameters)
             Serial.printf("Trai: L1(%d), L2(%d), L3(%d)\n", getRawPulse(0), getRawPulse(1), getRawPulse(2));
             Serial.printf("Phai: R1(%d), R2(%d), R3(%d)\n", getRawPulse(3), getRawPulse(4), getRawPulse(5));
             Serial.println("======================================\n");
-            
+
             lastPrintTime1 = millis();
         }
-        
 
         // ====================================================================
         // 2. CỨ MỖI 10 GIÂY IN TIMELINE
@@ -390,10 +389,10 @@ void setup()
     sideRight.addMotor(&m_R3);
 
     m_L1.setTrim(1.0);
-    m_L2.setTrim(0.9);
+    m_L2.setTrim(1.0);
     m_L3.setTrim(1.0);
     m_R1.setTrim(1.0);
-    m_R2.setTrim(0.92);
+    m_R2.setTrim(1.0);
     m_R3.setTrim(1.0);
 
     myRover.setSides(&sideLeft, &sideRight);
