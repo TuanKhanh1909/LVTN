@@ -14,7 +14,7 @@
 #define JOY_X_PIN          34
 #define JOY_Y_PIN          35
 #define POT_PIN            33
-#define CALIBRATE_BTN_PIN  26
+#define CALIBRATE_BTN_PIN  32
 
 // Cấu hình LCD (Em đang dùng 20x4, rất tốt!)
 #define LCD_SDA_PIN 21
@@ -22,7 +22,7 @@
 LiquidCrystal_I2C lcd(0x27, 20, 4); // Địa chỉ 0x27, 20 cột, 4 dòng
 
 // --- PHẦN 2: CẤU HÌNH ESP-NOW & EEPROM ---
-uint8_t receiverMAC[] = {0x24, 0xD7, 0xEB, 0x18, 0x34, 0xC8}; // MAC của xe
+uint8_t receiverMAC[] = {0xD4, 0xE9, 0xF4, 0xE9, 0x4B, 0x30}; // MAC của xe
 typedef struct {
   uint16_t pulse_left;
   uint16_t pulse_right;
@@ -141,11 +141,7 @@ void setup() {
   lcd.print("Mars Rover CTRL");
 
   pinMode(CALIBRATE_BTN_PIN, INPUT_PULLUP);
-
-  if (digitalRead(CALIBRATE_BTN_PIN) == LOW) {
-    runCalibration();
-  }
-
+  
   if (!loadCalibration()) {
     lcd.setCursor(0, 1);
     lcd.print("No calib data!");
@@ -176,6 +172,15 @@ void setup() {
 // ==                                  HÀM LOOP()                                    ==
 // ====================================================================================
 void loop() {
+  // ---> THÊM ĐOẠN NÀY VÀO NGAY ĐẦU HÀM LOOP <---
+  // Liên tục giám sát nút nhấn Calib
+  if (digitalRead(CALIBRATE_BTN_PIN) == LOW) {
+    delay(1000); // Chống dội phím (Debounce)
+    if (digitalRead(CALIBRATE_BTN_PIN) == LOW) { // Xác nhận người dùng thực sự đang nhấn
+      runCalibration();
+    }
+  }
+
   if (millis() - lastSendTime >= SEND_INTERVAL) {
     lastSendTime = millis(); // VỊ TRÍ ĐÚNG CỦA DÒNG NÀY
 

@@ -14,6 +14,11 @@ NetworkService::NetworkService(InputManager* inputMgr)
     _ssid = "ESP32-Mars-Rover";
     _password = "12345678";
     instance = this; // Gán con trỏ tĩnh
+
+    // Địa chỉ MAC Tay cầm: B0:CB:D8:C5:E7:38
+    uint8_t gamepadMac[6] = {0xB0, 0xCB, 0xD8, 0xC5, 0xE7, 0x38}; 
+    memcpy(_remoteMac, gamepadMac, 6);
+    _hasRemoteMac = true; // Khẳng định đã có MAC luôn từ đầu
 }
 
 void NetworkService::begin() {
@@ -101,11 +106,19 @@ void NetworkService::enableWiFi(){
     if (esp_now_init() != ESP_OK) {
         Serial.println("[ERR] ESP-NOW Restart Failed");
     } else {
+        // ---> 4. THÊM LẠI PEER CỐ ĐỊNH SAU KHI RESTART ESP-NOW <---
+        esp_now_peer_info_t peerInfo = {};
+        memcpy(peerInfo.peer_addr, _remoteMac, 6);
+        peerInfo.channel = 0;
+        peerInfo.encrypt = false;
+        esp_now_add_peer(&peerInfo);
+
         esp_now_register_recv_cb(NetworkService::onEspNowRecv);
     }
     
     _isWiFiOn = true;
 }
+
 void NetworkService::broadcastStatus(String status) {
     if(_isWiFiOn && WiFi.softAPgetStationNum() > 0){
         // CHỐNG TRÀN BỘ NHỚ (DROP FRAME CACHING)
@@ -136,6 +149,18 @@ void NetworkService::setupEspNow() {
         Serial.println("[ERR] ESP-NOW Init Failed");
         return;
     }
+    // ---> 2. ĐĂNG KÝ PEER BẰNG MAC CỐ ĐỊNH TAY CẦM <---
+    esp_now_peer_info_t peerInfo = {};
+    memcpy(peerInfo.peer_addr, _remoteMac, 6);
+    peerInfo.channel = 0;
+    peerInfo.encrypt = false;
+    
+    if (esp_now_add_peer(&peerInfo) == ESP_OK) {
+        Serial.println("[ESP-NOW] Da luu MAC Tay Cam co dinh thanh cong!");
+    } else {
+        Serial.println("[ERR] ESP-NOW Add Peer Failed!");
+    }
+
     // Đăng ký hàm Static làm callback
     esp_now_register_recv_cb(NetworkService::onEspNowRecv);
 }
@@ -165,24 +190,22 @@ void NetworkService::setupWebServer() {
 void NetworkService::onEspNowRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     if (len == sizeof(EspNowPacket) && instance != nullptr) {
         
-        // --- THUẬT TOÁN AUTO-PAIRING ---
-        // Nếu xe chưa biết MAC của tay cầm, nó sẽ copy MAC này và thêm vào danh sách Peer
-        if (!instance->_hasRemoteMac) {
-            memcpy(instance->_remoteMac, mac, 6);
-            esp_now_peer_info_t peerInfo = {};
-            memcpy(peerInfo.peer_addr, instance->_remoteMac, 6);
-            peerInfo.channel = 0;
-            peerInfo.encrypt = false;
-            if (esp_now_add_peer(&peerInfo) == ESP_OK) {
-                instance->_hasRemoteMac = true;
-                Serial.println("[ESP-NOW] Da luu MAC Tay Cam va Add Peer thanh cong!");
+        // ---> 3. KIỂM TRA BẢO MẬT: BỘ LỌC MAC <---
+        bool isFromMyGamepad = true;
+        for (int i = 0; i < 6; i++) {
+            if (mac[i] != instance->_remoteMac[i]) {
+                isFromMyGamepad = false;
+                break; // Sai 1 byte là từ chối luôn
             }
         }
 
-        EspNowPacket data;
-        memcpy(&data, incomingData, sizeof(data));
-        // Gọi vào InputManager thông qua con trỏ instance
-        instance->_inputMgr->updateEspNow(data.pulse_left, data.pulse_right);
+        // Nếu ĐÚNG MAC tay cầm của em thì mới xử lý lệnh
+        if (isFromMyGamepad) {
+            EspNowPacket data;
+            memcpy(&data, incomingData, sizeof(data));
+            // Gọi vào InputManager thông qua con trỏ instance
+            instance->_inputMgr->updateEspNow(data.pulse_left, data.pulse_right);
+        }
     }
 }
 
