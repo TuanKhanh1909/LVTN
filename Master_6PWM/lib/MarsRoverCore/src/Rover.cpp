@@ -37,6 +37,8 @@ MotionType Rover::determineDesiredState(uint16_t pL, uint16_t pR){
     int dirL = getDirection(pL);
     int dirR = getDirection(pR);
 
+    /*
+    
     if (dirL == 0 && dirR == 0) return MOTION_IDLE;
     if (dirL == 1 && dirR == 1) return MOTION_FORWARD;
     if (dirL == -1 && dirR == -1) return MOTION_BACKWARD;
@@ -46,6 +48,47 @@ MotionType Rover::determineDesiredState(uint16_t pL, uint16_t pR){
     if (dirL == 1 && dirR == 0) return MOTION_FWD_RIGHT;
     if (dirL == 0 && dirR == -1) return MOTION_BCK_LEFT;
     if (dirL == -1 && dirR == 0) return MOTION_BCK_RIGHT;
+    return MOTION_IDLE;
+
+    // 3. Phân tích nhóm TIẾN (Có ít nhất 1 bánh tiến)
+    if (dirL == 1 || dirR == 1) { 
+        // Bánh trái quay nhanh hơn -> Xe ôm cua sang Phải
+        if (pL > pR + 40) return MOTION_FWD_RIGHT; 
+        // Bánh phải quay nhanh hơn -> Xe ôm cua sang Trái
+        if (pR > pL + 40) return MOTION_FWD_LEFT;  
+        // Tốc độ ngang nhau -> Tiến thẳng
+        return MOTION_FORWARD;
+    }
+
+    */
+    // 1. Đứng yên
+    if (dirL == 0 && dirR == 0) return MOTION_IDLE;
+    
+    // 2. Quay tại chỗ (Spin)
+    if (dirL == -1 && dirR == 1) return MOTION_SPIN_LEFT;
+    if (dirL == 1 && dirR == -1) return MOTION_SPIN_RIGHT;
+
+    // 3. Nhóm TIẾN (Sử dụng logic cũ)
+    // - Khi cả 2 bánh cùng tiến, trả về FORWARD. Hệ thống sẽ tự bẻ lái mềm mại theo tay ga (nhờ chênh lệch PWM).
+    // - Khi có 1 bánh đứng im, 1 bánh tiến -> Ép vào rẽ gắt FWD_LEFT / FWD_RIGHT.
+    if (dirL == 1 && dirR == 1) return MOTION_FORWARD;
+    if (dirL == 0 && dirR == 1) return MOTION_FWD_LEFT;
+    if (dirL == 1 && dirR == 0) return MOTION_FWD_RIGHT;
+
+    // 4. Phân tích nhóm LÙI (Có ít nhất 1 bánh lùi, bánh kia lùi hoặc đứng im)
+    if (dirL == -1 || dirR == -1) { 
+        // LƯU Ý: Với xung < 1500, số CÀNG NHỎ thì lùi CÀNG NHANH
+        
+        // Bánh phải lùi nhanh hơn bánh trái -> Đuôi xe văng sang trái
+        if (pR < pL - 40) return MOTION_BCK_LEFT;  
+        
+        // Bánh trái lùi nhanh hơn bánh phải -> Đuôi xe văng sang phải
+        if (pL < pR - 40) return MOTION_BCK_RIGHT; 
+        
+        // Không lệch nhau nhiều -> Lùi thẳng
+        return MOTION_BACKWARD;
+    }
+
     return MOTION_IDLE;
 }
 

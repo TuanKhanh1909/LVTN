@@ -25,6 +25,17 @@
 // 2. KHỞI TẠO CÁC ĐỐI TƯỢNG (OBJECT INSTANTIATION)
 // =========================================================================================
 
+
+/*
+ // Thêm vào đầu file
+#define PIN_TRACE_CONTROL  2
+#define PIN_TRACE_COMMAND  4
+#define PIN_TRACE_INPUT    12
+#define PIN_TRACE_REPORT   15
+
+*/
+
+
 // --- CỤM BÊN TRÁI (LEFT SIDE) ---
 BldcDriver m_L1(27, 0);
 BldcDriver m_L2(14, 1);
@@ -115,6 +126,9 @@ void Task_Command(void *pvParameters)
         last_cycle_start = current_cycle_start;
         logTrace(2, true);
 
+        // BẬT MỨC CAO: Đánh dấu bắt đầu tính toán
+        //digitalWrite(PIN_TRACE_COMMAND, HIGH);
+
         // 1. Cập nhật dữ liệu phần cứng (RC)
         rcService.update();
 
@@ -126,6 +140,9 @@ void Task_Command(void *pvParameters)
 
         execTime_Command = micros() - current_cycle_start;
         logTrace(2, false);
+        // TẮT MỨC THẤP: Đánh dấu kết thúc tính toán
+        //digitalWrite(PIN_TRACE_COMMAND, LOW);
+
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
@@ -151,6 +168,9 @@ void Task_Control(void *pvParameters)
         last_cycle_start = current_cycle_start;
         logTrace(1, true);
 
+        // BẬT MỨC CAO: Đánh dấu bắt đầu tính toán
+        //digitalWrite(PIN_TRACE_CONTROL, HIGH);
+
         // 1. Mở hộp thư từ QUEUE_CMD
         xQueueReceive(queue_Cmd, &currentCmd, 0);
 
@@ -166,6 +186,9 @@ void Task_Control(void *pvParameters)
 
         execTime_Control = micros() - current_cycle_start;
         logTrace(1, false);
+        // TẮT MỨC THẤP: Đánh dấu kết thúc tính toán
+        //digitalWrite(PIN_TRACE_CONTROL, LOW);
+
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
@@ -189,6 +212,10 @@ void Task_Input(void *pvParameters)
         last_cycle_start = current_cycle_start;
         logTrace(5, true);
 
+
+        // BẬT MỨC CAO: Đánh dấu bắt đầu tính toán
+        //digitalWrite(PIN_TRACE_INPUT, HIGH);
+
         // 1. Lấy dữ liệu từ QUEUE_DRIVE_STATUS
         xQueueReceive(queue_DriveStatus, &dStatus, 0);
 
@@ -210,6 +237,9 @@ void Task_Input(void *pvParameters)
 
         execTime_Input = micros() - current_cycle_start;
         logTrace(5, false);
+        // TẮT MỨC THẤP: Đánh dấu kết thúc tính toán
+        //digitalWrite(PIN_TRACE_INPUT, LOW);
+
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
@@ -233,6 +263,9 @@ void Task_Report(void *pvParameters)
         cycleTime_Report = current_cycle_start - last_cycle_start;
         last_cycle_start = current_cycle_start;
         logTrace(3, true);
+
+        // BẬT MỨC CAO: Đánh dấu bắt đầu tính toán
+        //digitalWrite(PIN_TRACE_REPORT, HIGH);
 
         // 1. Quản lý Mạng
         network.update();
@@ -263,6 +296,10 @@ void Task_Report(void *pvParameters)
 
         execTime_Report = micros() - current_cycle_start;
         logTrace(3, false);
+
+        // TẮT MỨC THẤP: Đánh dấu kết thúc tính toán
+        //digitalWrite(PIN_TRACE_REPORT, LOW);
+
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
@@ -372,6 +409,8 @@ void Task_SystemMonitor(void *pvParameters)
     }
 }
 
+
+
 // =========================================================================================
 // 4. KHỞI TẠO (SETUP)
 // =========================================================================================
@@ -388,12 +427,12 @@ void setup()
     sideRight.addMotor(&m_R2);
     sideRight.addMotor(&m_R3);
 
-    m_L1.setTrim(1.0);
-    m_L2.setTrim(1.0);
+    m_L1.setTrim(0.97);
+    m_L2.setTrim(0.97);
     m_L3.setTrim(1.0);
-    m_R1.setTrim(1.0);
+    m_R1.setTrim(0.97);
     m_R2.setTrim(1.0);
-    m_R3.setTrim(1.0);
+    m_R3.setTrim(0.95);
 
     myRover.setSides(&sideLeft, &sideRight);
 
@@ -402,6 +441,24 @@ void setup()
     network.begin();
     rcService.begin();
     setupSpeedMonitor();
+
+    /*
+      
+     // Thêm đoạn này để cấu hình ngõ ra cho Logic Analyzer
+    pinMode(PIN_TRACE_CONTROL, OUTPUT);
+    pinMode(PIN_TRACE_COMMAND, OUTPUT);
+    pinMode(PIN_TRACE_INPUT, OUTPUT);
+    pinMode(PIN_TRACE_REPORT, OUTPUT);
+    
+    digitalWrite(PIN_TRACE_CONTROL, LOW);
+    digitalWrite(PIN_TRACE_COMMAND, LOW);
+    digitalWrite(PIN_TRACE_INPUT, LOW);
+    digitalWrite(PIN_TRACE_REPORT, LOW);
+
+    */
+    
+
+
     // Khởi tạo hàng đợi với tên mới (Chuẩn theo sơ đồ)
     queue_Cmd = xQueueCreate(1, sizeof(ControlCommand));
     queue_DriveStatus = xQueueCreate(1, sizeof(DriveStatus));
@@ -416,7 +473,7 @@ void setup()
     xTaskCreatePinnedToCore(Task_Report, "Report", 8192, NULL, 1, NULL, 0);
 
     // TASK TẠM THỜI CHỈ DÙNG ĐỂ TEST THÔNG SỐ (CORE 0)
-    xTaskCreatePinnedToCore(Task_SystemMonitor, "SysMonitor", 4096, NULL, 0, NULL, 0);
+    //xTaskCreatePinnedToCore(Task_SystemMonitor, "SysMonitor", 4096, NULL, 0, NULL, 0);
 
     Serial.println("--- SYSTEM READY ---");
 }

@@ -133,12 +133,12 @@ void setupSpeedMonitor()
     attachInterrupt(digitalPinToInterrupt(HALL_PIN_R3), onHallR3, CHANGE);
 
     pinMode(BATTERY_PIN, INPUT);
-    ema_battery = (analogRead(BATTERY_PIN) / 4095.0) * 62.5;
+    ema_battery = (analogRead(BATTERY_PIN) / 4095.0) * 61.5;
 }
 
 float readBatteryVoltage()
 {
-    float raw_voltage = (analogRead(BATTERY_PIN) / 4095.0) * 56.1;
+    float raw_voltage = (analogRead(BATTERY_PIN) / 4095.0) * 62.5;
     ema_battery = (0.1 * raw_voltage) + (0.9 * ema_battery);
     return ema_battery;
 }

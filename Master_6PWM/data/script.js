@@ -128,16 +128,29 @@ function onMessage(event) {
             document.getElementById('rpmR3').textContent = data.rpm[5];
 
             // TÍNH TOÁN PWM TỪNG BÁNH (Dựa trên hệ số Trim trong main.cpp)
-            document.getElementById('pwmL1').textContent = data.pwmL; // Trim 1.0
-            document.getElementById('pwmL2').textContent = data.pwmL; // Trim 1.0
-            document.getElementById('pwmL3').textContent = data.pwmL; // Trim 1.0
-            
-            document.getElementById('pwmR1').textContent = data.pwmR; // Trim 1.0
-            
-            document.getElementById('pwmR2').textContent = data.pwmR;
-            //document.getElementById('pwmR2').textContent = Math.round(data.pwmR * 0.92); // Trim 0.92
+            //document.getElementById('pwmL1').textContent = data.pwmL; // Trim 1.0
 
-            document.getElementById('pwmR3').textContent = data.pwmR; // Trim 1.0
+            document.getElementById('pwmR1').textContent = Math.round(data.pwmR * 0.97); 
+
+            //document.getElementById('pwmL2').textContent = data.pwmL; // Trim 1.0
+
+            document.getElementById('pwmR2').textContent = Math.round(data.pwmR * 0.97);
+
+            //document.getElementById('pwmL3').textContent = data.pwmL; // Trim 1.0
+
+            document.getElementById('pwmR3').textContent = Math.round(data.pwmR * 1.0); 
+            
+            //document.getElementById('pwmR1').textContent = data.pwmR; // Trim 1.0
+
+            document.getElementById('pwmL1').textContent = Math.round(data.pwmL * 0.97);
+            
+            //document.getElementById('pwmR2').textContent = data.pwmR;
+
+            document.getElementById('pwmL2').textContent = Math.round(data.pwmL * 1.0);
+
+            //document.getElementById('pwmR3').textContent = data.pwmR; // Trim 1.0
+
+            document.getElementById('pwmL3').textContent = Math.round(data.pwmL * 0.95); 
 
             // --- 4. CẬP NHẬT PWM THỰC TẾ ---
             document.getElementById('telePwmL').textContent = data.pwmL;

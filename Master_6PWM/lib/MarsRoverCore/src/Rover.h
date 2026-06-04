@@ -28,7 +28,7 @@ private:
     const int PWM_FIXED_REVERSE = 180;
     const int PWM_ASSIST_FWD = 100;
     const int PWM_TURN_FWD = 110;
-    const int PWM_ASSIST_BCK = 85;
+    const int PWM_ASSIST_BCK = 90;
     
     //Ramp_step
     const float RAMP_STEP = 6.0;
