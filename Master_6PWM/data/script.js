@@ -1,275 +1,333 @@
+/* ══════════════════════════════════════════
+   MARS ROVER CONTROLLER — script.js v2
+══════════════════════════════════════════ */
+
 var gateway = `ws://${window.location.hostname}/ws`;
 var websocket;
 
-// Các biến Joystick
-const joystick = document.getElementById('joystick');
-const speedSlider = document.getElementById('speedSlider');
-let isDragging = false;
-let centerX = 0, centerY = 0;
-const maxDistance = 70;
+// ── State ──
+let currentMode = "NONE";
+let currentX    = 2048;
+let currentY    = 2048;
+let currentPot  = 0;
+let isDragging  = false;
+let joyCenter   = { x: 0, y: 0 };
+const MAX_DIST  = 45;
 
-// Dữ liệu gửi đi (Mô phỏng phần cứng)
-let currentX = 2048;   // Giữa (0-4095)
-let currentY = 2048;   // Giữa (0-4095)
-let currentPot = 0;    // Min (0-4095)
-let lastSuccessTime = 0;
-let currentMode = "NONE"; // Đổi khởi tạo ban đầu thành Khóa (NONE)
-window.addEventListener('load', onload);
+// ── Elements ──
+const joystick       = document.getElementById('joystick');
+const joystickTech   = document.getElementById('joystickTech');
+const speedSlider    = document.getElementById('speedSlider');
+const speedSliderTech= document.getElementById('speedSliderTech');
 
-function onload(event) {
-    initWebSocket();
-    initJoystick();
-    initSpeedSlider();
-    // Gửi dữ liệu liên tục 50ms/lần (20Hz)
-    setInterval(updateValuesAndSend, 50); 
-}
+// ══════════════════════════
+window.addEventListener('load', () => {
+  initWebSocket();
+  initJoystick(joystick);
+  initJoystick(joystickTech);
+  initSpeedSlider(speedSlider);
+  initSpeedSlider(speedSliderTech);
+  setInterval(sendData, 50); // 20 Hz
+  updateModeUI();
+});
 
+// ══════════════════════════
+// WEBSOCKET
+// ══════════════════════════
 function initWebSocket() {
-    console.log('Connecting to WebSocket...');
-    websocket = new WebSocket(gateway);
-    websocket.onopen = function() { 
-        document.getElementById('connectionStatus').className = 'connection-status connection-ok';
-        document.getElementById('connectionStatus').textContent = '🟢 Connection: OK';
-        lastSuccessTime = Date.now();
-    };
-    websocket.onclose = function() { 
-        document.getElementById('connectionStatus').className = 'connection-status connection-lost';
-        document.getElementById('connectionStatus').textContent = '🔴 Connection: LOST!';
-        setTimeout(initWebSocket, 2000); 
-    };
-    websocket.onmessage = onMessage;
+  websocket = new WebSocket(gateway);
+  websocket.onopen  = wsOpen;
+  websocket.onclose = wsClose;
+  websocket.onmessage = onMessage;
 }
 
-//Hàm xử lý nút gạt(mode)
-// Hàm xử lý khi gạt 1 trong 3 nút công tắc
-function toggleMode(source) {
-    let webBtn = document.getElementById('webModeBtn');
-    let espBtn = document.getElementById('espModeBtn');
-    let rcBtn = document.getElementById('rcModeBtn');
-    let statusText = document.getElementById('activeModeText');
-
-    if (source === 'WEB') {
-        if (webBtn.checked) {
-            espBtn.checked = false; rcBtn.checked = false;
-            currentMode = "WEB";
-            statusText.textContent = "🌐 Điều khiển bằng WEB";
-            statusText.style.color = "#3498db";
-        } else currentMode = "NONE";
-    } 
-    else if (source === 'ESPNOW') {
-        if (espBtn.checked) {
-            webBtn.checked = false; rcBtn.checked = false;
-            currentMode = "ESPNOW";
-            statusText.textContent = "📡 Điều khiển bằng ESP-NOW";
-            statusText.style.color = "#f1c40f";
-        } else currentMode = "NONE";
-    }
-    else if (source === 'RC') {
-        if (rcBtn.checked) {
-            webBtn.checked = false; espBtn.checked = false;
-            currentMode = "RC";
-            statusText.textContent = "🎮 Tay cầm RC";
-            statusText.style.color = "#2ecc71";
-        } else currentMode = "NONE";
-    }
-
-    // Nếu cả 3 nút đều đang tắt -> Ép về chế độ Khóa
-    if (!webBtn.checked && !espBtn.checked && !rcBtn.checked) {
-        currentMode = "NONE";
-        statusText.textContent = "⛔ ĐÃ KHÓA (Chưa chọn nguồn)";
-        statusText.style.color = "#e74c3c";
-    }
-
-    // Gửi lệnh set Mode xuống ESP32
-    if(websocket && websocket.readyState === WebSocket.OPEN) {
-        websocket.send("MODE:" + currentMode);
-    }
-
-    // Nếu không phải WEB thì khóa tay cầm ảo lại, ép về giữa
-    if (currentMode !== "WEB") {
-        stopDrag();
-    }
+function wsOpen() {
+  setConnStatus(true);
+}
+function wsClose() {
+  setConnStatus(false);
+  setTimeout(initWebSocket, 2000);
 }
 
+function setConnStatus(ok) {
+  const el = document.getElementById('connectionStatus');
+  if (ok) {
+    el.textContent = '● ONLINE';
+    el.className   = 'badge badge-green';
+  } else {
+    el.textContent = '● OFFLINE';
+    el.className   = 'badge badge-red';
+  }
+}
+
+// ══════════════════════════
+// NHẬN DỮ LIỆU TELEMETRY
+// ══════════════════════════
 function onMessage(event) {
-    lastSuccessTime = Date.now();
-    // Chỉ cập nhật giao diện JoyStick ảo khi KHÔNG KÉO TAY
-    // Nhưng các thông số Telemetry thì VẪN PHẢI CẬP NHẬT liên tục
-    
-    try {
-        // Cố gắng giải mã JSON
-        let data = JSON.parse(event.data);
-        
-        if (data.type === "tele") {
-            // --- 1. XỬ LÝ CỜ FAILSAFE ---
-            let banner = document.getElementById('failsafeBanner');
-            if (data.fs === true) {
-                banner.style.display = "block";
-                if (currentMode === "WEB") stopDrag(); // Khóa cứng tay cầm trên Web
-            } else {
-                banner.style.display = "none";
-            }
+  try {
+    const data = JSON.parse(event.data);
+    if (data.type !== "tele") return;
 
-            // --- 2. CẬP NHẬT PIN ---
-            let batBadge = document.getElementById('batteryStatus');
-            let batVolts = parseFloat(data.bat).toFixed(1);
-            batBadge.textContent = "🔋 Pin: " + batVolts + "V";
-            // Đổi màu theo áp pin (Hệ 36V, đầy 42V)
-            if (data.bat >= 37.0) batBadge.style.background = "#27ae60"; // Xanh lá
-            else if (data.bat >= 34.0) batBadge.style.background = "#f39c12"; // Vàng
-            else batBadge.style.background = "#c0392b"; // Đỏ
+    // 1. Failsafe
+    const banner = document.getElementById('failsafeBanner');
+    if (data.fs === true) {
+      banner.style.display = 'block';
+      document.getElementById('fsVal').textContent = 'ON';
+      document.getElementById('fsVal').style.color = '#e74c3c';
+      if (currentMode === "WEB") stopDrag();
+    } else {
+      banner.style.display = 'none';
+      document.getElementById('fsVal').textContent = 'OFF';
+      document.getElementById('fsVal').style.color = 'var(--col-green)';
+    }
 
-            // --- 3. CẬP NHẬT TỐC ĐỘ 6 BÁNH (RPM) ---
-            document.getElementById('rpmL1').textContent = data.rpm[0];
-            document.getElementById('rpmL2').textContent = data.rpm[1];
-            document.getElementById('rpmL3').textContent = data.rpm[2];
-            document.getElementById('rpmR1').textContent = data.rpm[3];
-            document.getElementById('rpmR2').textContent = data.rpm[4];
-            document.getElementById('rpmR3').textContent = data.rpm[5];
+    // 2. Pin
+    const bat = parseFloat(data.bat).toFixed(1);
+    const batEl = document.getElementById('batteryStatus');
+    batEl.textContent = '🔋 ' + bat + 'V';
+    if (data.bat >= 37.0)      { batEl.className = 'badge badge-green'; }
+    else if (data.bat >= 34.0) { batEl.className = 'badge badge-yellow'; }
+    else                       { batEl.className = 'badge badge-red'; }
 
-            // TÍNH TOÁN PWM TỪNG BÁNH (Dựa trên hệ số Trim trong main.cpp)
-            //document.getElementById('pwmL1').textContent = data.pwmL; // Trim 1.0
-
-            document.getElementById('pwmR1').textContent = Math.round(data.pwmR * 0.97); 
-
-            //document.getElementById('pwmL2').textContent = data.pwmL; // Trim 1.0
-
-            document.getElementById('pwmR2').textContent = Math.round(data.pwmR * 0.97);
-
-            //document.getElementById('pwmL3').textContent = data.pwmL; // Trim 1.0
-
-            document.getElementById('pwmR3').textContent = Math.round(data.pwmR * 1.0); 
-            
-            //document.getElementById('pwmR1').textContent = data.pwmR; // Trim 1.0
-
-            document.getElementById('pwmL1').textContent = Math.round(data.pwmL * 0.97);
-            
-            //document.getElementById('pwmR2').textContent = data.pwmR;
-
-            document.getElementById('pwmL2').textContent = Math.round(data.pwmL * 1.0);
-
-            //document.getElementById('pwmR3').textContent = data.pwmR; // Trim 1.0
-
-            document.getElementById('pwmL3').textContent = Math.round(data.pwmL * 0.95); 
-
-            // --- 4. CẬP NHẬT PWM THỰC TẾ ---
-            document.getElementById('telePwmL').textContent = data.pwmL;
-            document.getElementById('telePwmR').textContent = data.pwmR;
-
-            // --- 5. CẬP NHẬT TRẠNG THÁI VẬN HÀNH ---
-                let modeText = "⏸️ STOP";
-                switch(data.motion) {
-                    case 0: modeText = "⏸️ STOP"; break;
-                    case 1: modeText = "⬆️ FORWARD"; break;
-                    case 2: modeText = "⬇️ BACKWARD"; break;
-                    case 3: modeText = "↖️ FWD LEFT"; break;
-                    case 4: modeText = "↗️ FWD RIGHT"; break;
-                    case 5: modeText = "🔄 SPIN LEFT"; break;
-                    case 6: modeText = "🔄 SPIN RIGHT"; break;
-                }
-                document.getElementById('modeDisplay').textContent = modeText;
-            
+    // 3. RPM — tab vận hành (chỉ RPM)
+    const rpmIds = ['rpmL1','rpmL2','rpmL3','rpmR1','rpmR2','rpmR3'];
+    rpmIds.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.textContent = data.rpm[i];
+        // Highlight khi đang quay
+        const card = el.closest('.wheel-card');
+        if (card) {
+          card.classList.toggle('spinning', data.rpm[i] > 5);
         }
-    } catch (e) {
-        // Nếu chẳng may gói tin bị nhiễu rác không phải chuẩn JSON thì phớt lờ
-        console.log("JSON Parse Error: ", e);
-    }
-}
-
-function updateVisuals(x, y, pot) {
-    // 1. Cập nhật các con số Text
-    document.getElementById('xValue').textContent = x;
-    document.getElementById('yValue').textContent = y;
-    document.getElementById('potValue').textContent = pot;
-    document.getElementById('speedValue').textContent = Math.round((pot / 4095) * 100) + "%";
-
-    // 2. Dịch chuyển Joystick
-    let deltaX = ((x - 2048) / 2047) * maxDistance;
-    let deltaY = ((y - 2048) / 2047) * maxDistance;
-    joystick.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
-    
-    // 3. Cập nhật vị trí thanh trượt
-    speedSlider.value = pot;
- }
-// --- LOGIC JOYSTICK ẢO ---
-function initJoystick() {
-    joystick.addEventListener('mousedown', startDrag);
-    joystick.addEventListener('touchstart', startDrag);
-    document.addEventListener('mousemove', drag);
-    document.addEventListener('touchmove', drag);
-    document.addEventListener('mouseup', stopDrag);
-    document.addEventListener('touchend', stopDrag);
-}
-
-function startDrag(e) {
-    // KHÓA: Chỉ cho phép kéo Joystick khi đang ở chế độ WEB
-    if (currentMode !== "WEB") {
-        alert("Vui lòng BẬT công tắc 'Cho phép WEB lái' để điều khiển!");
-        return; 
-    }
-    isDragging = true;
-    const rect = joystick.parentElement.getBoundingClientRect();
-    centerX = rect.left + rect.width / 2;
-    centerY = rect.top + rect.height / 2;
-}
-
-function initSpeedSlider() {
-    speedSlider.addEventListener('input', function() {
-        // KHÓA: Chỉ cho phép kéo Slider khi đang ở chế độ WEB
-        if (currentMode !== "WEB") { 
-            this.value = currentPot; 
-            return;
-        } 
-        currentPot = parseInt(this.value);
-        updateVisuals(currentX, currentY, currentPot);
+      }
     });
+
+    // 4. Tab kỹ thuật — RPM
+    const techRpmIds = ['techRpmL1','techRpmL2','techRpmL3','techRpmR1','techRpmR2','techRpmR3'];
+    techRpmIds.forEach((id, i) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = data.rpm[i];
+    });
+
+    // 5. Tab kỹ thuật — PWM
+    ['pwmL1','pwmL2','pwmL3'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = data.pwmL;
+    });
+    ['pwmR1','pwmR2','pwmR3'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = data.pwmR;
+    });
+    setEl('telePwmL', data.pwmL);
+    setEl('telePwmR', data.pwmR);
+
+    // 6. Trạng thái vận hành
+    const motionMap = {
+      0: { text: '⏸ STOP',       cls: '' },
+      1: { text: '▲ FORWARD',     cls: 'moving' },
+      2: { text: '▼ BACKWARD',    cls: 'moving' },
+      3: { text: '↖ FWD LEFT',    cls: 'moving' },
+      4: { text: '↗ FWD RIGHT',   cls: 'moving' },
+      5: { text: '↺ SPIN LEFT',   cls: 'spinning' },
+      6: { text: '↻ SPIN RIGHT', cls: 'spinning' },
+      7: { text: '↙ BCK LEFT',    cls: 'moving' },  // ĐÃ THÊM LÙI TRÁI
+      8: { text: '↘ BCK RIGHT',   cls: 'moving' },  // ĐÃ THÊM LÙI PHẢI
+      9: { text: '⚠ BRAKING',     cls: '' }
+    };
+    const m = motionMap[data.motion] || motionMap[0];
+    const md = document.getElementById('modeDisplay');
+    if (md) {
+      md.textContent = m.text;
+      md.className   = 'motion-display ' + m.cls;
+    }
+
+  } catch(e) {
+    // ignore bad packet
+  }
+}
+
+function setEl(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+// ══════════════════════════
+// GỬI DỮ LIỆU (20 Hz)
+// ══════════════════════════
+function sendData() {
+  if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
+  if (currentMode === "WEB") {
+    websocket.send(`X:${currentX},Y:${currentY},POT:${currentPot}`);
+  }
+}
+
+// ══════════════════════════
+// CHỌN NGUỒN ĐIỀU KHIỂN
+// ══════════════════════════
+function toggleMode(source) {
+  if (currentMode === source) {
+    currentMode = "NONE";
+  } else {
+    currentMode = source;
+  }
+  updateModeUI();
+  if (websocket && websocket.readyState === WebSocket.OPEN) {
+    websocket.send("MODE:" + currentMode);
+  }
+  if (currentMode !== "WEB") stopDrag();
+}
+
+function updateModeUI() {
+  // Buttons
+  document.getElementById('btnRC') .classList.toggle('active-rc',  currentMode === 'RC');
+  document.getElementById('btnWEB').classList.toggle('active-web', currentMode === 'WEB');
+  document.getElementById('btnESP').classList.toggle('active-esp', currentMode === 'ESPNOW');
+
+  // Text
+  const t = document.getElementById('activeModeText');
+  const map = {
+    'RC':     { text:'🎮 RC ACTIVE',       color:'var(--col-green)' },
+    'WEB':    { text:'🌐 WEB ACTIVE',      color:'var(--col-blue)' },
+    'ESPNOW': { text:'📡 ESP ACTIVE',      color:'var(--col-yellow)' },
+    'NONE':   { text:'⛔ LOCKED',          color:'#e74c3c' },
+  };
+  const info = map[currentMode] || map['NONE'];
+  t.textContent   = info.text;
+  t.style.color   = info.color;
+
+  // Joystick & slider lock/unlock
+  const webMode = currentMode === 'WEB';
+  updateControlLock(webMode);
+}
+
+function updateControlLock(unlocked) {
+  // Speed sliders
+  speedSlider.disabled     = !unlocked;
+  speedSliderTech.disabled = !unlocked;
+
+  // Joystick visual
+  const jBase  = joystick.parentElement;
+  const jBase2 = joystickTech.parentElement;
+  if (unlocked) {
+    jBase.closest('.ctrl-card').classList.remove('joystick-disabled');
+    jBase2.closest('.ctrl-card').classList.remove('joystick-disabled');
+    // Remove overlay if any
+    removeOverlay(jBase.closest('.ctrl-card'));
+    removeOverlay(jBase2.closest('.ctrl-card'));
+  } else {
+    jBase.closest('.ctrl-card').classList.add('joystick-disabled');
+    jBase2.closest('.ctrl-card').classList.add('joystick-disabled');
+    addOverlay(jBase.closest('.ctrl-card'));
+    addOverlay(jBase2.closest('.ctrl-card'));
+  }
+}
+
+function addOverlay(card) {
+  if (!card.querySelector('.locked-overlay')) {
+    const d = document.createElement('div');
+    d.className = 'locked-overlay';
+    d.textContent = '🔒 BẬT WEB ĐỂ ĐIỀU KHIỂN';
+    card.appendChild(d);
+  }
+}
+function removeOverlay(card) {
+  const o = card.querySelector('.locked-overlay');
+  if (o) o.remove();
+}
+
+// ══════════════════════════
+// JOYSTICK
+// ══════════════════════════
+function initJoystick(handle) {
+  handle.addEventListener('mousedown',  e => startDrag(e, handle));
+  handle.addEventListener('touchstart', e => startDrag(e, handle), { passive: false });
+}
+
+document.addEventListener('mousemove',  e => drag(e));
+document.addEventListener('touchmove',  e => drag(e), { passive: false });
+document.addEventListener('mouseup',    stopDrag);
+document.addEventListener('touchend',   stopDrag);
+
+function startDrag(e, handle) {
+  if (currentMode !== "WEB") return;
+  isDragging = true;
+  const rect = handle.parentElement.getBoundingClientRect();
+  joyCenter  = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  e.preventDefault();
 }
 
 function drag(e) {
-    if (!isDragging) return;
-    e.preventDefault();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    
-    let deltaX = clientX - centerX;
-    let deltaY = clientY - centerY;
-    const distance = Math.sqrt(deltaX*deltaX + deltaY*deltaY);
-    
-    if (distance > maxDistance) {
-        const angle = Math.atan2(deltaY, deltaX);
-        deltaX = Math.cos(angle) * maxDistance;
-        deltaY = Math.sin(angle) * maxDistance;
-    }
-    
-    //joystick.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
-    
-    // Map từ pixel sang giá trị 0-4095
-    // Y đi lên là âm trong HTML, nhưng ta muốn Y<2048 là Tiến (giống tay cầm)
-    // X đi phải là dương
-    currentX = Math.round(2048 + (deltaX / maxDistance) * 2047);
-    currentY = Math.round(2048 + (deltaY / maxDistance) * 2047);
-    updateVisuals(currentX, currentY, currentPot); 
+  if (!isDragging) return;
+  e.preventDefault();
+  const cx = e.touches ? e.touches[0].clientX : e.clientX;
+  const cy = e.touches ? e.touches[0].clientY : e.clientY;
+
+  let dx = cx - joyCenter.x;
+  let dy = cy - joyCenter.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist > MAX_DIST) {
+    const ang = Math.atan2(dy, dx);
+    dx = Math.cos(ang) * MAX_DIST;
+    dy = Math.sin(ang) * MAX_DIST;
+  }
+
+  currentX = Math.round(2048 + (dx / MAX_DIST) * 2047);
+  currentY = Math.round(2048 + (dy / MAX_DIST) * 2047);
+  updateJoyVisual(dx, dy);
+  updateDebugXY();
 }
 
 function stopDrag() {
-    isDragging = false;
-   // joystick.style.transform = 'translate(-50%, -50%)';
-    currentX = 2048; // Về giữa
-    currentY = 2048; // Về giữa
-    updateVisuals(currentX, currentY, currentPot);
+  isDragging = false;
+  currentX = 2048;
+  currentY = 2048;
+  updateJoyVisual(0, 0);
+  updateDebugXY();
 }
 
+function updateJoyVisual(dx, dy) {
+  const t = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+  joystick.style.transform     = t;
+  joystickTech.style.transform = t;
+}
 
-// --- GỬI DỮ LIỆU ---
-function updateValuesAndSend() {
-   // Chỉ gửi dữ liệu khi kết nối OK
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
-        
-        // QUAN TRỌNG: Chỉ gửi dữ liệu điều khiển khi ĐANG BẬT CHẾ ĐỘ WEB
-        if (currentMode === "WEB") {
-            let msg = `X:${currentX},Y:${currentY},POT:${currentPot}`;
-            websocket.send(msg);
-        }
-        // Nếu tắt Web, hàm này KHÔNG làm gì cả -> Không ghi đè lên giao diện
-    }
+function updateDebugXY() {
+  setEl('xValue',   currentX);
+  setEl('yValue',   currentY);
+  setEl('potValue', currentPot);
+}
+
+// ══════════════════════════
+// SPEED SLIDER
+// ══════════════════════════
+function initSpeedSlider(slider) {
+  slider.addEventListener('input', function() {
+    if (currentMode !== "WEB") { this.value = currentPot; return; }
+    currentPot = parseInt(this.value);
+    syncSliders();
+    updateSpeedDisplay();
+  });
+}
+
+function syncSliders() {
+  speedSlider.value     = currentPot;
+  speedSliderTech.value = currentPot;
+}
+
+function updateSpeedDisplay() {
+  const pct = Math.round((currentPot / 4095) * 100) + '%';
+  setEl('speedValue',     pct);
+  setEl('speedValueTech', pct);
+  setEl('speedPct',       pct);
+}
+
+// ══════════════════════════
+// TAB SWITCHING
+// ══════════════════════════
+function switchTab(tab) {
+  document.getElementById('panelOps') .classList.toggle('active', tab === 'ops');
+  document.getElementById('panelTech').classList.toggle('active', tab === 'tech');
+  document.getElementById('tabOps')  .classList.toggle('active', tab === 'ops');
+  document.getElementById('tabTech') .classList.toggle('active', tab === 'tech');
 }

@@ -180,7 +180,10 @@ void NetworkService::setupWebServer() {
     _server.on("/script.js", HTTP_GET, [](AsyncWebServerRequest *request){
         request->send(SPIFFS, "/script.js", "text/javascript");
     });
-
+    _server.on("/rover.jpg", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(SPIFFS, "/rover.jpg", "image/jpeg");
+    });
+    // ----------------------------------------------------
     _server.begin();
     Serial.println("[INFO] HTTP Server Started");
 }

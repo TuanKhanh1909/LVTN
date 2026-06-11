@@ -27,10 +27,12 @@ enum InputSource {
 
 // --- TRẠNG THÁI VẬN HÀNH AN TOÀN (SAFETY STATE MACHINE) ---
 // Dùng để xử lý logic bên trong bộ điều khiển (Core Logic)
-enum RoverState {
-    STATE_IDLE,             // Xe đang đứng yên, phanh khóa
-    STATE_DRIVING,          // Xe đang di chuyển (Soft-start hoạt động)
-    STATE_BRAKING_TO_SWITCH // Xe đang phanh chờ dừng hẳn để đảo chiều (Bảo vệ hộp số)
+enum DriveFSMState {
+    STATE_0_IDLE,       // Ngủ đông, PWM = 0
+    STATE_1_SETUP,      // Mồi ga an toàn 100ms/120ms
+    STATE_2_DRIVING,    // Vận hành thực tế (Tiến PID / Lùi tĩnh 90)
+    STATE_3_IDLE_HOLD,  // Phanh chờ Tiến (Giữ 75 PWM)
+    STATE_4_SWITCH_DIR  // Phanh đảo chiều (Timeout 1.5s)
 };
 
 // --- TRẠNG THÁI HIỂN THỊ (DISPLAY STATE) ---
@@ -53,6 +55,7 @@ struct DriveStatus {
     int16_t pwmL;
     int16_t pwmR;
     MotionType motion;
+    float rpm[6];
 };
 
 // --- GÓI TIN ĐO LƯỜNG TỔNG HỢP (TELEMETRY) ---

@@ -4,37 +4,41 @@ BldcDriver::BldcDriver(uint8_t pwmPin, uint8_t channel)
 {
     _pwmPin = pwmPin;
     _channel = channel;
-    _trim = 1.0; // Mặc định là 100%
-}
-
-void BldcDriver::setTrim(float trimValue)
-{
-    // Giới hạn trong khoảng 0.0 đến 1.0 để an toàn
-    if (trimValue < 0)
-        _trim = 0;
-    else if (trimValue > 1.0)
-        _trim = 1.0;
-    else
-        _trim = trimValue;
+    _trim = 1.0f; // Mặc định không hiệu chỉnh
 }
 
 void BldcDriver::begin()
 {
-    // Cấu hình PWM: Tần số 5KHz, Độ phân giải 8-bit (0-255)
-    // Tần số này phù hợp với mạch lọc RC R=15k, C=220nF trong báo cáo
-    ledcSetup(_channel, 5000, 8);
+    #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+    ledcAttach(_pwmPin, 5000, 8); // Thư viện mới dùng Pin
+#else
+    ledcSetup(_channel, 10000, 8); // Thư viện cũ dùng Channel
     ledcAttachPin(_pwmPin, _channel);
-    setThrottle(0); // Khởi động ở trạng thái dừng
+#endif
+    setThrottle(0);
 }
 
+void BldcDriver::setTrim(float trim)
+{
+    _trim = constrain(trim, 0.0f, 1.0f); // Giới hạn Trim từ 0.0 đến 1.0
+}
+float BldcDriver::getTrim()
+{
+    return _trim;
+}
 void BldcDriver::setThrottle(int pwm)
 {
-    // Nhận PWM với hệ số Trim trước khi xuất ra
-    // Ví dụ: Lệnh 200, trim 0.9 -> chỉ xuất 180
-    int adjustedPwm = pwm * _trim;
-
-    int finalPwm = 255 - abs(adjustedPwm); // Logic ngược cho NPN
-
+    // Áp dụng hệ số Trim để giảm công suất nếu cần
+    int trimmedPwm = (int)(abs(pwm) * _trim);   
+    int finalPwm = 255 - abs(trimmedPwm); // Logic ngược cho NPN
     finalPwm = constrain(finalPwm, 0, 255);
-    ledcWrite(_channel, finalPwm);
+   
+   // ledcWrite(_channel, finalPwm);
+
+    #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
+    ledcWrite(_pwmPin, finalPwm); // <--- LỖI NẰM Ở ĐÂY ĐÃ ĐƯỢC FIX
+#else
+    ledcWrite(_channel, finalPwm); 
+#endif
+
 }

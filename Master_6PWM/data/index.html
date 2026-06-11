@@ -1,127 +1,220 @@
 <!DOCTYPE html>
-<html>
+<html lang="vi">
 <head>
-    <meta charset="UTF-8">
-    <title>Mars Rover Controller</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" type="text/css" href="style.css">
+<meta charset="UTF-8">
+<title>Mars Rover Controller</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="topnav">
-        <h1>🚀 Mars Rover Controller</h1>
-    </div>
-    <div id="failsafeBanner" class="failsafe-banner" style="display: none;">
-        ⚠️ HỆ THỐNG ĐÃ KHÓA AN TOÀN (FAILSAFE) - HÃY CHỌN LẠI NGUỒN ĐIỀU KHIỂN ⚠️
-    </div>
-    <div class="content">
-        <div class="card" style="margin-bottom: 20px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <p class="card-title" style="margin-bottom: 0;">📊 Bảng Giám Sát (Telemetry)</p>
-                <div id="batteryStatus" class="battery-badge">🔋 Pin: --.-V</div>
-            </div>
-            <hr style="border-color: rgba(255,255,255,0.1); margin: 15px 0;">
-            
-            <div class="telemetry-grid">
-                <div class="tele-side">
-                    <h4>Cụm Trái (Ga gốc: <span id="telePwmL">0</span>)</h4>
-                    <p>Bánh L1: <span id="pwmL1" class="pwm-val">0</span> PWM | <span id="rpmL1" class="rpm-val">0</span> RPM</p>
-                    <p>Bánh L2: <span id="pwmL2" class="pwm-val">0</span> PWM | <span id="rpmL2" class="rpm-val">0</span> RPM</p>
-                    <p>Bánh L3: <span id="pwmL3" class="pwm-val">0</span> PWM | <span id="rpmL3" class="rpm-val">0</span> RPM</p>
-                </div>
-                <div class="tele-side" style="text-align: right;">
-                    <h4>Cụm Phải (Ga gốc: <span id="telePwmR">0</span>)</h4>
-                    <p>Bánh R1: <span id="pwmR1" class="pwm-val">0</span> PWM | <span id="rpmR1" class="rpm-val">0</span> RPM</p>
-                    <p>Bánh R2: <span id="pwmR2" class="pwm-val">0</span> PWM | <span id="rpmR2" class="rpm-val">0</span> RPM</p>
-                    <p>Bánh R3: <span id="pwmR3" class="pwm-val">0</span> PWM | <span id="rpmR3" class="rpm-val">0</span> RPM</p>
-                </div>
-            </div>
-        </div>
-        <div class="card" style="margin-bottom: 20px;">
-            <p class="card-title" style="margin-bottom: 15px; text-align: center;">🎮 Nguồn Điều Khiển</p>
-            
-            <div class="safety-container" style="margin-bottom: 15px;">
-                <span class="safety-label">🎮 Cho phép RC lái:</span>
-                <label class="switch">
-                    <input type="checkbox" id="rcModeBtn" onchange="toggleMode('RC')">
-                    <span class="slider-toggle round"></span>
-                </label>
-            </div>
-            
-            <div class="safety-container" style="margin-bottom: 15px;">
-                <span class="safety-label">🌐 Cho phép WEB lái:</span>
-                <label class="switch">
-                    <input type="checkbox" id="webModeBtn" onchange="toggleMode('WEB')">
-                    <span class="slider-toggle round"></span>
-                </label>
-            </div>
 
-            <div class="safety-container" style="margin-bottom: 15px;">
-                <span class="safety-label">📡 Cho phép ESP-NOW lái:</span>
-                <label class="switch">
-                    <input type="checkbox" id="espModeBtn" onchange="toggleMode('ESPNOW')">
-                    <span class="slider-toggle round"></span>
-                </label>
-            </div>
+<div id="failsafeBanner" class="failsafe-banner" style="display:none">
+  ⚠ FAILSAFE ACTIVE — CHỌN LẠI NGUỒN ĐIỀU KHIỂN
+</div>
 
-            <div style="text-align: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
-                <span style="color: #888;">Đang hoạt động: </span>
-                <span id="activeModeText" style="font-weight: bold; color: #2ecc71; font-size: 1.1rem;">🎮 Tay cầm RC</span>
-            </div>
-        </div>
-        
-        <div class="control-grid">
-            <div class="card">
-                <p class="card-title">🎮 Hướng (Direction)</p>
-                <div class="joystick-container">
-                    <div class="joystick-base">
-                        <div class="axis-line vertical"></div>
-                        <div class="axis-line horizontal"></div>
-                        <div class="center-dot"></div>
-                        <div class="joystick-handle" id="joystick"></div>
-                    </div>
-                </div>
-                <div class="status-grid">
-                    <div class="status-item">
-                        <div class="status-label">X Position</div>
-                        <div class="status-value" id="xValue">2048</div>
-                    </div>
-                    <div class="status-item">
-                        <div class="status-label">Y Position</div>
-                        <div class="status-value" id="yValue">2048</div>
-                    </div>
-                </div>
-            </div>
-            <div class="card">
-                <p class="card-title">⚡ Tốc độ (Limit)</p>
-                <div class="speed-container">
-                    <div class="speed-labels"><span>MAX</span></div>
-                    <div class="slider-wrapper">
-                        <input type="range" id="speedSlider" class="speed-slider"
-                               min="0" max="4095" value="0" step="1">
-                    </div>
-                    <div class="speed-labels"><span>MIN</span></div>
-                </div>
-                <div class="status-grid">
-                    <div class="status-item">
-                        <div class="status-label">Speed Limit</div>
-                        <div class="status-value" id="speedValue">0%</div>
-                    </div>
-                    <div class="status-item">
-                        <div class="status-label">POT Value</div>
-                        <div class="status-value" id="potValue">0</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="card">
-            <div class="mode-display">
-                <div class="mode-text" id="modeDisplay">🔄 NEUTRAL</div>
-            </div>
-            <div class="connection-status connection-ok" id="connectionStatus">
-                🟢 Connection: Connecting...
-            </div>
-        </div>
+<!-- ═══ HEADER ═══ -->
+<header class="topbar">
+  <div class="topbar-left">
+    <img src="/rover.jpg" class="rover-logo" alt="Rover">
+    <div class="topbar-title">
+      <span class="title-main">MARS ROVER</span>
+      <span class="title-sub">CONTROLLER </span>
     </div>
-    <script src="script.js"></script>
+  </div>
+  <div class="topbar-right">
+    <div id="batteryStatus" class="badge badge-green">🔋 --.-V</div>
+    <div id="connectionStatus" class="badge badge-dim">● --</div>
+  </div>
+</header>
+
+<!-- ═══ SOURCE BAR ═══ -->
+<div class="source-bar">
+  <span class="source-label">NGUỒN:</span>
+  <button class="src-btn" id="btnRC"    onclick="toggleMode('RC')">🎮 RC</button>
+  <button class="src-btn" id="btnWEB"   onclick="toggleMode('WEB')">🌐 WEB</button>
+  <button class="src-btn" id="btnESP"   onclick="toggleMode('ESPNOW')">📡 ESP</button>
+  <span id="activeModeText" class="active-mode-text">⛔ LOCKED</span>
+</div>
+
+<!-- ═══ TAB BAR ═══ -->
+<nav class="tabbar">
+  <button class="tab active" id="tabOps"  onclick="switchTab('ops')">⚙ VẬN HÀNH</button>
+  <button class="tab"        id="tabTech" onclick="switchTab('tech')">🔬 KỸ THUẬT</button>
+</nav>
+
+<!-- ═══════════════════════════
+     PANEL: VẬN HÀNH
+═══════════════════════════ -->
+<main id="panelOps" class="panel active">
+
+  <!-- Sơ đồ xe -->
+  <div class="rover-diagram">
+
+    <!-- Cột bánh TRÁI -->
+    <div class="wheel-col left">
+      <div class="wheel-card left" id="wL1">
+        <div class="wheel-id">L1</div>
+        <div class="wheel-rpm" id="rpmL1">--</div>
+        <div class="wheel-unit">RPM</div>
+      </div>
+      <div class="wheel-card left" id="wL2">
+        <div class="wheel-id">L2</div>
+        <div class="wheel-rpm" id="rpmL2">--</div>
+        <div class="wheel-unit">RPM</div>
+      </div>
+      <div class="wheel-card left" id="wL3">
+        <div class="wheel-id">L3</div>
+        <div class="wheel-rpm" id="rpmL3">--</div>
+        <div class="wheel-unit">RPM</div>
+      </div>
+    </div>
+
+    <!-- Thân xe -->
+    <div class="rover-body">
+      <div class="front-label">▲ FRONT</div>
+      <div class="body-status">
+        <div class="motion-display" id="modeDisplay">⏸ STOP</div>
+        <div class="speed-display">
+          <span class="speed-label">TỐC ĐỘ</span>
+          <span class="speed-val" id="speedPct">0%</span>
+        </div>
+      </div>
+      <div class="rear-label">▼ REAR</div>
+    </div>
+
+    <!-- Cột bánh PHẢI -->
+    <div class="wheel-col right">
+      <div class="wheel-card right" id="wR1">
+        <div class="wheel-id">R1</div>
+        <div class="wheel-rpm" id="rpmR1">--</div>
+        <div class="wheel-unit">RPM</div>
+      </div>
+      <div class="wheel-card right" id="wR2">
+        <div class="wheel-id">R2</div>
+        <div class="wheel-rpm" id="rpmR2">--</div>
+        <div class="wheel-unit">RPM</div>
+      </div>
+      <div class="wheel-card right" id="wR3">
+        <div class="wheel-id">R3</div>
+        <div class="wheel-rpm" id="rpmR3">--</div>
+        <div class="wheel-unit">RPM</div>
+      </div>
+    </div>
+
+  </div><!-- /rover-diagram -->
+
+  <!-- Joystick + Speed (chỉ active khi WEB) -->
+  <div class="control-row" id="controlRow">
+    <div class="ctrl-card joystick-card">
+      <div class="ctrl-title">HƯỚNG</div>
+      <div class="joystick-wrap">
+        <div class="joystick-base">
+          <div class="axis-line v"></div>
+          <div class="axis-line h"></div>
+          <div class="joystick-handle" id="joystick"></div>
+        </div>
+      </div>
+    </div>
+    <div class="ctrl-card speed-card">
+      <div class="ctrl-title">TỐC ĐỘ</div>
+      <div class="speed-wrap">
+        <span class="speed-tick">MAX</span>
+        <input type="range" id="speedSlider" class="speed-slider"
+               min="0" max="4095" value="0" step="1">
+        <span class="speed-tick">MIN</span>
+      </div>
+      <div class="speed-big" id="speedValue">0%</div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ═══════════════════════════
+     PANEL: KỸ THUẬT (ẩn)
+═══════════════════════════ -->
+<main id="panelTech" class="panel">
+
+  <div class="rover-diagram">
+    <div class="wheel-col left">
+      <div class="wheel-card left tech">
+        <div class="wheel-id">L1</div>
+        <div class="tech-row"><span class="tl">PWM</span><span class="tv orange" id="pwmL1">--</span></div>
+        <div class="tech-row"><span class="tl">RPM</span><span class="tv yellow" id="techRpmL1">--</span></div>
+      </div>
+      <div class="wheel-card left tech">
+        <div class="wheel-id">L2</div>
+        <div class="tech-row"><span class="tl">PWM</span><span class="tv orange" id="pwmL2">--</span></div>
+        <div class="tech-row"><span class="tl">RPM</span><span class="tv yellow" id="techRpmL2">--</span></div>
+      </div>
+      <div class="wheel-card left tech">
+        <div class="wheel-id">L3</div>
+        <div class="tech-row"><span class="tl">PWM</span><span class="tv orange" id="pwmL3">--</span></div>
+        <div class="tech-row"><span class="tl">RPM</span><span class="tv yellow" id="techRpmL3">--</span></div>
+      </div>
+    </div>
+
+    <div class="rover-body tech-body">
+      <div class="front-label">▲ FRONT</div>
+      <div class="body-status">
+        <div class="tech-signal-block">
+          <div class="sig-row"><span class="tl">X</span><span class="tv purple" id="xValue">2048</span></div>
+          <div class="sig-row"><span class="tl">Y</span><span class="tv purple" id="yValue">2048</span></div>
+          <div class="sig-row"><span class="tl">POT</span><span class="tv purple" id="potValue">0</span></div>
+          <div class="sig-row"><span class="tl">PWM-L</span><span class="tv orange" id="telePwmL">--</span></div>
+          <div class="sig-row"><span class="tl">PWM-R</span><span class="tv orange" id="telePwmR">--</span></div>
+          <div class="sig-row"><span class="tl">FS</span><span class="tv green" id="fsVal">OFF</span></div>
+        </div>
+      </div>
+      <div class="rear-label">▼ REAR</div>
+    </div>
+
+    <div class="wheel-col right">
+      <div class="wheel-card right tech">
+        <div class="wheel-id">R1</div>
+        <div class="tech-row"><span class="tl">PWM</span><span class="tv orange" id="pwmR1">--</span></div>
+        <div class="tech-row"><span class="tl">RPM</span><span class="tv yellow" id="techRpmR1">--</span></div>
+      </div>
+      <div class="wheel-card right tech">
+        <div class="wheel-id">R2</div>
+        <div class="tech-row"><span class="tl">PWM</span><span class="tv orange" id="pwmR2">--</span></div>
+        <div class="tech-row"><span class="tl">RPM</span><span class="tv yellow" id="techRpmR2">--</span></div>
+      </div>
+      <div class="wheel-card right tech">
+        <div class="wheel-id">R3</div>
+        <div class="tech-row"><span class="tl">PWM</span><span class="tv orange" id="pwmR3">--</span></div>
+        <div class="tech-row"><span class="tl">RPM</span><span class="tv yellow" id="techRpmR3">--</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Joystick tech mode -->
+  <div class="control-row" id="controlRowTech">
+    <div class="ctrl-card joystick-card">
+      <div class="ctrl-title">HƯỚNG</div>
+      <div class="joystick-wrap">
+        <div class="joystick-base">
+          <div class="axis-line v"></div>
+          <div class="axis-line h"></div>
+          <div class="joystick-handle" id="joystickTech"></div>
+        </div>
+      </div>
+    </div>
+    <div class="ctrl-card speed-card">
+      <div class="ctrl-title">TỐC ĐỘ</div>
+      <div class="speed-wrap">
+        <span class="speed-tick">MAX</span>
+        <input type="range" id="speedSliderTech" class="speed-slider"
+               min="0" max="4095" value="0" step="1">
+        <span class="speed-tick">MIN</span>
+      </div>
+      <div class="speed-big" id="speedValueTech">0%</div>
+    </div>
+  </div>
+
+</main>
+
+<script src="script.js"></script>
 </body>
 </html>

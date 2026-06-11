@@ -13,18 +13,15 @@ class BldcDriver
 private:
     uint8_t _pwmPin;  // Chân GPIO xuất xung
     uint8_t _channel; // Kênh LEDC (0-15) của ESP32
-    float _trim;      // Biến lưu hệ số Trim (0.0-1.0)
-
+    float _trim = 1.0; // Hệ số hiệu chỉnh (Trim) cho từng động cơ nếu cần
 public:
     BldcDriver(uint8_t pwmPin, uint8_t channel);
-    // Hàm cài đặt Trim
-    void setTrim(float trimValue);
     void begin();
-    // ---> THÊM HÀM NÀY ĐỂ PHỤC VỤ UNIT TEST <---
-    float getTrim() { return _trim; }
 
-    // Xuất xung PWM (0-255) ra mạch lọc RC -> 0-5V Analog
-    void setThrottle(int pwm);
+    void setTrim(float trim); // Cho phép điều chỉnh Trim nếu cần
+    float getTrim();          // Lấy hệ số hiện tại
+    void setThrottle(int pwm);// Nhận trực tiếp PWM từ PID tính ra
+
 };
 
 #endif

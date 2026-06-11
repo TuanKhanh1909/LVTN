@@ -12,11 +12,27 @@
 
 #define BATTERY_PIN 32 // ADC1_CH4 (An toàn tuyệt đối khi bật WiFi)
 
+const int hallPins[NUM_MOTORS] = {HALL_PIN_L1, HALL_PIN_L2, HALL_PIN_L3, HALL_PIN_R1, HALL_PIN_R2, HALL_PIN_R3};
+
+// --- CÁC BIẾN NGẮT (VOLATILE) ---
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+volatile uint32_t _pulseCounts[NUM_MOTORS] = {0};
+volatile uint32_t _firstPulseTime[NUM_MOTORS] = {0};
+volatile uint32_t _lastPulseTime[NUM_MOTORS] = {0};
+volatile uint32_t _prevLastPulseTime[NUM_MOTORS] = {0};
+
+float _rpmHistory[NUM_MOTORS][5] = {0};
+int _historyIdx[NUM_MOTORS] = {0};
+float _filteredRPM[NUM_MOTORS] = {0};
+
+float ema_battery = 0.0; // Biến lọc trung bình Pin
+
 // --- CẤU HÌNH ---
-#define SAMPLE_TIME_MS 350  // 350ms không có xung = Coi như dừng hẳn
+#define TIMEOUT_ZERO_RPM 150000
+#define MIN_PULSE_TIME_US 1000 // Chặn nhiễu cực đại
 #define PULSES_PER_REV 90.0 // Ne = 90 xung/vòng
 
-// Cấu trúc dữ liệu chuẩn bị cho thuật toán M/T
+/*// Cấu trúc dữ liệu chuẩn bị cho thuật toán M/T
 struct MotorPulseData
 {
     volatile int32_t count;      // Tương đương N
@@ -27,191 +43,127 @@ struct MotorPulseData
 // Khởi tạo mảng lưu trữ cho 6 bánh xe: [L1, L2, L3, R1, R2, R3]
 MotorPulseData mData[6];
 static int16_t rpm_cache[6] = {0};
-
-/*
-// --- BIẾN TOÀN CỤC LƯU TRỮ NGẮT ---
-static volatile int64_t last_time_L1 = 0, last_time_L2 = 0, last_time_L3 = 0;
-static volatile int64_t last_time_R1 = 0, last_time_R2 = 0, last_time_R3 = 0;
-
-// BIẾN ĐẾM XUNG (PULSE COUNTERS)
-static volatile int32_t pulse_L1 = 0, pulse_L2 = 0, pulse_L3 = 0;
-static volatile int32_t pulse_R1 = 0, pulse_R2 = 0, pulse_R3 = 0;
-
-//BIẾN LƯU TRỮ RPM (CACHE)
-static int16_t rpm_L1 = 0, rpm_L2 = 0, rpm_L3 = 0;
-static int16_t rpm_R1 = 0, rpm_R2 = 0, rpm_R3 = 0;
 */
 
-portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
-float ema_battery = 0.0; // Biến lọc trung bình Pin
 
-// --- CÁC HÀM NGẮT (ISR) SIÊU NHẸ BÉN ---
-// Thuật toán M: Ngắt chỉ làm 1 việc duy nhất là TĂNG BIẾN ĐẾM
-void IRAM_ATTR onHallL1()
-{
-    int64_t now = esp_timer_get_time();
-    portENTER_CRITICAL_ISR(&timerMux);
-    if (mData[0].count == 0)
-        mData[0].first_tick = now; // Ghi nhận T_first
-    mData[0].last_tick = now;      // Liên tục cập nhật T_last
-    mData[0].count++;              // Tăng đếm N
-    portEXIT_CRITICAL_ISR(&timerMux);
-}
-void IRAM_ATTR onHallL2()
-{
-    int64_t now = esp_timer_get_time();
-    portENTER_CRITICAL_ISR(&timerMux);
-    if (mData[1].count == 0)
-        mData[1].first_tick = now;
-    mData[1].last_tick = now;
-    mData[1].count++;
-    portEXIT_CRITICAL_ISR(&timerMux);
-}
-void IRAM_ATTR onHallL3()
-{
-    int64_t now = esp_timer_get_time();
-    portENTER_CRITICAL_ISR(&timerMux);
-    if (mData[2].count == 0)
-        mData[2].first_tick = now;
-    mData[2].last_tick = now;
-    mData[2].count++;
-    portEXIT_CRITICAL_ISR(&timerMux);
-}
-void IRAM_ATTR onHallR1()
-{
-    int64_t now = esp_timer_get_time();
-    portENTER_CRITICAL_ISR(&timerMux);
-    if (mData[3].count == 0)
-        mData[3].first_tick = now;
-    mData[3].last_tick = now;
-    mData[3].count++;
-    portEXIT_CRITICAL_ISR(&timerMux);
-}
-void IRAM_ATTR onHallR2()
-{
-    int64_t now = esp_timer_get_time();
-    portENTER_CRITICAL_ISR(&timerMux);
-    if (mData[4].count == 0)
-        mData[4].first_tick = now;
-    mData[4].last_tick = now;
-    mData[4].count++;
-    portEXIT_CRITICAL_ISR(&timerMux);
-}
-void IRAM_ATTR onHallR3()
-{
-    int64_t now = esp_timer_get_time();
-    portENTER_CRITICAL_ISR(&timerMux);
-    if (mData[5].count == 0)
-        mData[5].first_tick = now;
-    mData[5].last_tick = now;
-    mData[5].count++;
-    portEXIT_CRITICAL_ISR(&timerMux);
-}
 
+// =======================================================
+// CÁC HÀM NGẮT PHẦN CỨNG (INTERRUPT SERVICE ROUTINES)
+// Dùng MUX để đảm bảo an toàn trên ESP32 Dual Core
+// =======================================================
+void IRAM_ATTR isr_motor_core(int id) {
+    uint32_t t = micros();
+    portENTER_CRITICAL_ISR(&timerMux);
+    uint32_t dt_noise = t - _lastPulseTime[id];
+    
+    if (dt_noise > MIN_PULSE_TIME_US) { 
+        if (_pulseCounts[id] == 0) {
+            _firstPulseTime[id] = t; 
+        }
+        _prevLastPulseTime[id] = _lastPulseTime[id]; 
+        _lastPulseTime[id] = t;                 
+        _pulseCounts[id]++;                  
+    }
+    portEXIT_CRITICAL_ISR(&timerMux);
+}
+void IRAM_ATTR isr_motor0() { isr_motor_core(0); }
+void IRAM_ATTR isr_motor1() { isr_motor_core(1); }
+void IRAM_ATTR isr_motor2() { isr_motor_core(2); }
+void IRAM_ATTR isr_motor3() { isr_motor_core(3); }
+void IRAM_ATTR isr_motor4() { isr_motor_core(4); }
+void IRAM_ATTR isr_motor5() { isr_motor_core(5); }
 // ====================================================================
 // 2. KHỞI TẠO CHÂN NGẮT
 // ====================================================================
-void setupSpeedMonitor()
-{
-    for (int i = 0; i < 6; i++)
-    {
-        mData[i].count = 0;
+void setupSpeedMonitor() {
+    for (int i = 0; i < NUM_MOTORS; i++) {
+        pinMode(hallPins[i], INPUT_PULLUP);
     }
+    // Gắn ngắt (Sử dụng RISING hoặc CHANGE đều được, đồng bộ với PULSES_PER_REVOLUTION)
+    attachInterrupt(digitalPinToInterrupt(hallPins[0]), isr_motor0, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(hallPins[1]), isr_motor1, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(hallPins[2]), isr_motor2, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(hallPins[3]), isr_motor3, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(hallPins[4]), isr_motor4, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(hallPins[5]), isr_motor5, CHANGE);
 
-    // BẮT BUỘC DÙNG INPUT_PULLUP VÀ CHANGE NHƯ CODE PID
-    pinMode(HALL_PIN_L1, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(HALL_PIN_L1), onHallL1, CHANGE);
-    pinMode(HALL_PIN_L2, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(HALL_PIN_L2), onHallL2, CHANGE);
-    pinMode(HALL_PIN_L3, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(HALL_PIN_L3), onHallL3, CHANGE);
-    pinMode(HALL_PIN_R1, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(HALL_PIN_R1), onHallR1, CHANGE);
-    pinMode(HALL_PIN_R2, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(HALL_PIN_R2), onHallR2, CHANGE);
-    pinMode(HALL_PIN_R3, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(HALL_PIN_R3), onHallR3, CHANGE);
-
+    // Cài đặt Pin
     pinMode(BATTERY_PIN, INPUT);
-    ema_battery = (analogRead(BATTERY_PIN) / 4095.0) * 61.5;
+    ema_battery = (analogRead(BATTERY_PIN) / 4095.0) * 62.5; // Khởi tạo giá trị đầu
 }
 
-float readBatteryVoltage()
-{
+
+// =======================================================
+// TÍNH TOÁN RPM
+// =======================================================
+void updateSpeedMonitor() {
+    uint32_t now_us = micros();
+    // 1. Đọc điện áp Pin (Bộ lọc EMA)
     float raw_voltage = (analogRead(BATTERY_PIN) / 4095.0) * 62.5;
     ema_battery = (0.1 * raw_voltage) + (0.9 * ema_battery);
+
+    // 2. Tính toán tốc độ 6 bánh
+    for (int i = 0; i < NUM_MOTORS; i++) {
+        uint32_t count = 0;
+        uint32_t tFirst = 0, tLast = 0, tPrev = 0;
+
+        portENTER_CRITICAL(&timerMux);
+        count = _pulseCounts[i];
+        tFirst = _firstPulseTime[i];
+        tLast = _lastPulseTime[i];
+        tPrev = _prevLastPulseTime[i];
+        _pulseCounts[i] = 0; 
+        portEXIT_CRITICAL(&timerMux);
+
+        float rawRPM = 0.0f;
+
+        // THUẬT TOÁN HYBRID M/T (Cập nhật cho chu kỳ 50ms)
+        if ((now_us - tLast) > TIMEOUT_ZERO_RPM) {
+            rawRPM = 0.0f;
+        } 
+        else if (count >= 2) {
+            uint32_t dt = tLast - tFirst;
+            if (dt > 0) {
+                rawRPM = (float)(count - 1) * (60000000.0f / (PULSES_PER_REVOLUTION * dt));
+            }
+        } 
+        else if (count == 1) {
+            uint32_t dt = tLast - tPrev; 
+            if (dt > 0) {
+                rawRPM = 60000000.0f / (PULSES_PER_REVOLUTION * dt);
+            }
+        }
+        else {
+            rawRPM = _rpmHistory[i][(_historyIdx[i] + 4) % 5]; // Lấy lại số cũ nếu chưa timeout
+        }
+
+        // BỘ LỌC CỬA SỔ TRƯỢT 5 MẪU
+        _rpmHistory[i][_historyIdx[i]] = rawRPM;
+        _historyIdx[i] = (_historyIdx[i] + 1) % 5;
+        
+        float sum = 0;
+        for(int j = 0; j < 5; j++) sum += _rpmHistory[i][j];
+        _filteredRPM[i] = sum / 5.0f;
+    }
+}
+
+// Các hàm trả về dữ liệu
+float calculateRPM(int motorIndex) {
+    if (motorIndex < 0 || motorIndex >= NUM_MOTORS) return 0.0f;
+    return _filteredRPM[motorIndex];
+}
+
+float readBatteryVoltage(){
     return ema_battery;
 }
 
-// ====================================================================
-// 3. THUẬT TOÁN TÍNH TỐC ĐỘ (M/T ALGORITHM)
-// ====================================================================
-int16_t calculateRPM(int motorID)
-{
-    static unsigned long last_calc_time = 0;
-    unsigned long now_ms = millis();
+//bool isWheelStopped(int motorID) { return (calculateRPM(motorID) == 0); }
 
-    if (now_ms - last_calc_time >= SAMPLE_TIME_MS)
-    {
-        MotorPulseData localData[6];
-
-        portENTER_CRITICAL(&timerMux);
-        for (int i = 0; i < 6; i++)
-        {
-            localData[i].count = mData[i].count;
-            localData[i].first_tick = mData[i].first_tick;
-            localData[i].last_tick = mData[i].last_tick;
-            mData[i].count = 0; // Khi count bị reset về 0, ISR sẽ tự động cập nhật lại first_tick ở lần ngắt tiếp theo
-        }
-        portEXIT_CRITICAL(&timerMux);
-
-        for (int i = 0; i < 6; i++)
-        {
-            if (localData[i].count > 1)
-            { // Giống y chang điều kiện N > 1 bên code PID
-                float T0 = (localData[i].last_tick - localData[i].first_tick) / 1000000.0;
-
-                if (T0 > 0)
-                {
-                    float current_rpm = ((localData[i].count - 1) * 60.0) / (T0 * PULSES_PER_REV);
-                    if (current_rpm < 5.0)
-                        current_rpm = 0.0; // Bỏ qua sai số khi quay quá chậm
-                    rpm_cache[i] = (int16_t)current_rpm;
-                }
-                else
-                {
-                    rpm_cache[i] = 0;
-                }
-            }
-            else
-            {
-                rpm_cache[i] = 0;
-            }
-        }
-        last_calc_time = now_ms;
-    }
-
-    if (motorID >= 0 && motorID < 6)
-        return rpm_cache[motorID];
-    return 0;
-}
-
-bool isWheelStopped(int motorID) { return (calculateRPM(motorID) == 0); }
-
-bool isRoverCompletelyStopped()
-{
-    for (int i = 0; i < 6; i++)
-    {
-        if (!isWheelStopped(i))
-            return false;
-    }
-    return true;
-}
-
-// Hàm này lấy trực tiếp biến đếm thô từ phần cứng
-int32_t getRawPulse(int motorID)
-{
-    if (motorID >= 0 && motorID < 6)
-        return mData[motorID].count;
-    return 0;
-}
+// bool isRoverCompletelyStopped()// {
+//     for (int i = 0; i < 6; i++)
+//     {
+//         if (!isWheelStopped(i))
+//             return false;
+//     }
+//     return true;
+// }
