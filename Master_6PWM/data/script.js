@@ -12,7 +12,7 @@ let currentY    = 2048;
 let currentPot  = 0;
 let isDragging  = false;
 let joyCenter   = { x: 0, y: 0 };
-const MAX_DIST  = 45;
+const MAX_DIST  = 75;
 
 // ── Elements ──
 const joystick       = document.getElementById('joystick');
@@ -81,13 +81,28 @@ function onMessage(event) {
       document.getElementById('fsVal').style.color = 'var(--col-green)';
     }
 
-    // 2. Pin
-    const bat = parseFloat(data.bat).toFixed(1);
+    // 2. Pin & Tính toán SOC (Áp dụng cho Pin Li-ion 10S: 32V - 42V)
+    const v = parseFloat(data.bat);
+    const batStr = v.toFixed(1);
+
+    // Thuật toán tính phần trăm Pin (SOC)
+    let soc = ((v - 32.0) / (42.0 - 32.0)) * 100;
+    if (soc > 100) soc = 100; // Khóa trần 100%
+    if (soc < 0) soc = 0;     // Khóa đáy 0%
+    const socStr = Math.round(soc);
+
     const batEl = document.getElementById('batteryStatus');
-    batEl.textContent = '🔋 ' + bat + 'V';
-    if (data.bat >= 37.0)      { batEl.className = 'badge badge-green'; }
-    else if (data.bat >= 34.0) { batEl.className = 'badge badge-yellow'; }
-    else                       { batEl.className = 'badge badge-red'; }
+    // Hiển thị cả Điện áp lẫn Phần trăm
+    batEl.textContent = `🔋 ${batStr}V (${socStr}%)`;
+
+    // Cảnh báo màu sắc dựa trên dung lượng %
+    if (soc >= 40) { 
+        batEl.className = 'badge badge-green';  // > 40%: Xanh khỏe
+    } else if (soc >= 15) { 
+        batEl.className = 'badge badge-yellow'; // 15% - 40%: Vàng yếu
+    } else { 
+        batEl.className = 'badge badge-red';    // < 15%: Đỏ cạn pin
+    }
 
     // 3. RPM — tab vận hành (chỉ RPM)
     const rpmIds = ['rpmL1','rpmL2','rpmL3','rpmR1','rpmR2','rpmR3'];
@@ -140,6 +155,27 @@ function onMessage(event) {
     if (md) {
       md.textContent = m.text;
       md.className   = 'motion-display ' + m.cls;
+    }
+    // ==============================================================
+    // 5. TÍNH TOÁN VÀ HIỂN THỊ TỐC ĐỘ XE TRUNG TÂM (m/s)
+    // ==============================================================
+    const RADIUS_M = 0.08; // Bán kính 8 cm = 0.08 m
+    const CIRCUMFERENCE_M = 2 * Math.PI * RADIUS_M;
+
+    let sumRpm = 0;
+    data.rpm.forEach(r => sumRpm += r);
+    let avgRpm = sumRpm / 6.0;
+
+    let speedMS = 0;
+    // Áp dụng tính m/s khi xe đi tịnh tiến (Tiến, Lùi, Ôm cua)
+    if ([1, 2, 3, 4, 7, 8].includes(data.motion)) {
+        speedMS = (avgRpm * CIRCUMFERENCE_M) / 60.0;
+    } 
+    // Trạng thái Spin (5, 6) hoặc Dừng (0, 9), trọng tâm không đổi dời -> 0 m/s
+
+    const speedMeter = document.getElementById('speedMeter');
+    if (speedMeter) {
+        speedMeter.textContent = speedMS.toFixed(2) + ' m/s';
     }
 
   } catch(e) {
@@ -319,7 +355,7 @@ function updateSpeedDisplay() {
   const pct = Math.round((currentPot / 4095) * 100) + '%';
   setEl('speedValue',     pct);
   setEl('speedValueTech', pct);
-  setEl('speedPct',       pct);
+  //setEl('speedPct',       pct);
 }
 
 // ══════════════════════════

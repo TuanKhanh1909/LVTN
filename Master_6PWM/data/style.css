@@ -408,16 +408,16 @@ html, body {
 
 /* ── Joystick ── */
 .joystick-wrap {
-  width: 140px;
-  height: 140px;
+  width: 220px;
+  height: 220px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .joystick-base {
-  width: 130px;
-  height: 130px;
+  width: 200px;
+  height: 200px;
   border-radius: 50%;
   background: #080e1a;
   border: 2px solid var(--border-hi);
@@ -433,8 +433,8 @@ html, body {
 .axis-line.h { height: 1px; width: 100%; top: 50%; left: 0; transform: translateY(-50%); }
 
 .joystick-handle {
-  width: 52px;
-  height: 52px;
+  width: 68px;
+  height: 68px;
   border-radius: 50%;
   background: var(--col-amber);
   position: absolute;
@@ -455,7 +455,7 @@ html, body {
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  height: 130px;
+  height: 200px;
   justify-content: center;
 }
 
@@ -471,8 +471,8 @@ html, body {
   direction: rtl;
   -webkit-appearance: slider-vertical;
   appearance: slider-vertical;
-  width: 28px;
-  height: 90px;
+  width: 44px;
+  height: 200px;
   background: var(--border);
   border-radius: 10px;
   outline: none;
@@ -480,7 +480,7 @@ html, body {
 }
 .speed-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 28px; height: 28px;
+  width: 44px; height: 44px;
   border-radius: 50%;
   background: var(--col-amber);
   box-shadow: 0 0 8px rgba(255,214,92,0.4);
@@ -518,6 +518,13 @@ html, body {
   .rover-diagram { grid-template-columns: 66px 1fr 66px; }
   .wheel-card { min-height: 70px; }
   .wheel-rpm { font-size: 19px; }
-  .joystick-wrap { width: 120px; height: 120px; }
-  .joystick-base { width: 112px; height: 112px; }
+  
+  /* Responsive cho Mobile: Giữ mức to vừa phải để không bị vỡ màn hình */
+  .joystick-wrap { width: 160px; height: 160px; }
+  .joystick-base { width: 146px; height: 146px; }
+  .joystick-handle { width: 60px; height: 60px; }
+  
+  .speed-wrap { height: 150px; }
+  .speed-slider { width: 36px; height: 110px; }
+  .speed-slider::-webkit-slider-thumb { width: 36px; height: 36px; }
 }
