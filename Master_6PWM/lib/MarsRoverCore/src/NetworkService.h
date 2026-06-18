@@ -21,8 +21,8 @@ private:
     //BIẾN QUẢN LÝ TRẠNG THÁI WIFI
     bool _isWiFiOn; //Trạng thái WiFi hiện tại
     unsigned long _lastClientConnectedTime; //Lần cuối cùng có người kết nối
-    const unsigned long WIFI_TIMEOUT = 5000; //5 giây không có kết nối -> Tắt WiFi
-    const unsigned long WIFI_COOLDOWN = 10000;  //Tắt 10 giây cho giải nhiệt rồi bật lại
+    const unsigned long WIFI_TIMEOUT = 30000; //30 giây không có kết nối -> Tắt WiFi
+    const unsigned long WIFI_COOLDOWN = 5000;  //Tắt 5 giây cho giải nhiệt rồi bật lại
     unsigned long _wifiOffTime; //Thời điểm tắt WiFi
 
     // THÊM 2 BIẾN NÀY ĐỂ LƯU MAC TAY CẦM

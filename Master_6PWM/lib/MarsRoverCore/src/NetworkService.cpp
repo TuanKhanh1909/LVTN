@@ -59,7 +59,7 @@ void NetworkService::update() {
         if(isWebConnected || isEspNowActive){
             _lastClientConnectedTime = now; //Có người dùng -> Reset timer
         }else{
-            //Chỉ tắt khi KHÔNG dùng cả Web lẫn Tay cầm trong 5 giây
+            //Chỉ tắt khi KHÔNG dùng cả Web lẫn Tay cầm trong 30 giây
             if(now - _lastClientConnectedTime > WIFI_TIMEOUT){
                 Serial.println("[INFO] No client! Turning OFF WiFi to save ESP32!");
                 disableWiFi();
@@ -139,7 +139,7 @@ void NetworkService::setupWiFi() {
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP(_ssid, _password);
     // Giảm công suất phát sóng xuống một chút để đỡ nóng (Mặc định là 19.5dBm)
-    WiFi.setTxPower(WIFI_POWER_11dBm);
+    WiFi.setTxPower(WIFI_POWER_17dBm);
     Serial.print("[INFO] AP IP: ");
     Serial.println(WiFi.softAPIP());
 }
